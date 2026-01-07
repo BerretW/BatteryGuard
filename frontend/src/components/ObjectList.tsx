@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+// Added X to the lucide-react imports
 import { Building2, Search, Plus, MapPin, ChevronRight, Filter, Users, FileText, X } from 'lucide-react';
 import { BuildingObject, ObjectGroup } from '../types';
 
 interface ObjectListProps {
   objects: BuildingObject[];
   setObjects: (objects: BuildingObject[]) => void;
-  groups: ObjectGroup[]; // <--- Nová prop
+  groups: ObjectGroup[]; // <--- PŘIDÁNO: Přijímáme skupiny přes props
 }
 
 const ObjectList: React.FC<ObjectListProps> = ({ objects, setObjects, groups }) => {
@@ -15,7 +16,7 @@ const ObjectList: React.FC<ObjectListProps> = ({ objects, setObjects, groups }) 
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const navigate = useNavigate();
 
-  // ZDE BYLA CHYBA: useEffect s dataStore.getGroups() byl odstraněn.
+  // ZDE BYLA CHYBA: useEffect s dataStore.getGroups() odstraněn.
   // Používáme "groups" přímo z props.
 
   const filteredObjects = objects.filter(obj => {
@@ -42,7 +43,6 @@ const ObjectList: React.FC<ObjectListProps> = ({ objects, setObjects, groups }) 
       scheduledEvents: [],
       contacts: []
     };
-    // Zde voláme funkci z App.tsx, která zavolá API
     setObjects([...objects, newObj]);
     setAddModalOpen(false);
   };

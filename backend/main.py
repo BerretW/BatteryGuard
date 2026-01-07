@@ -127,7 +127,7 @@ async def login(creds: LoginRequest):
     token = create_access_token(data={"sub": user["email"]})
     
     # Return user data mapped for frontend
-    return {
+     return {
         "token": token,
         "user": {
             "id": user["id"],
@@ -136,6 +136,7 @@ async def login(creds: LoginRequest):
             "role": user["role"],
             "isAuthorized": user["isAuthorized"],
             "createdAt": user["createdAt"]
+            # Ujistěte se, že zde NENÍ "hashed_password"
         }
     }
 

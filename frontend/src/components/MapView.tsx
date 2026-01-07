@@ -1,8 +1,23 @@
-
 import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css'; // Import CSS přímo
 import { BuildingObject, BatteryStatus } from '../types';
+
+// --- OPRAVA IKON PRO LEAFLET ---
+// Toto řeší problém, kdy se v produkčním buildu nezobrazují markery
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
+// -------------------------------
 
 interface MapViewProps {
   objects: BuildingObject[];

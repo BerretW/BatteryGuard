@@ -14,17 +14,17 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
 
-  const handleAuth = (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => { // Přidat async
     e.preventDefault();
     setError('');
 
     if (isRegister) {
-      authService.register(name, email);
+      await authService.register(name, email); // Await
       setIsRegister(false);
       alert('Registrace proběhla. Vyčkejte na schválení administrátorem.');
     } else {
-      const result = authService.login(email, password);
-      if (result) {
+      const success = await authService.login(email, password); // Await
+      if (success) {
         onLogin();
       } else {
         setError('Neplatné přihlašovací údaje.');

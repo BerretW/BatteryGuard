@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # 1. Databáze (MongoDB)
+  mongo:
+    image: mongo:6.0
+    container_name: batteryguard-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - bg-network
+
+  # 2. Backend (FastAPI API)
+  backend:
+    build: ./backend
+    container_name: batteryguard-backend
+    restart: unless-stopped
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - SECRET_KEY=vas_tajny_klic_pro_jwt_tokeny_zmente_v_produkci
+    depends_on:
+      - mongo
+    networks:
+      - bg-network
+
+  # 3. Frontend (React + Nginx Proxy)
+  frontend:
+    build: ./frontend
+    container_name: batteryguard-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"  # Jediný veřejně vystavený port
+    depends_on:
+      - backend
+    networks:
+      - bg-network
+
+volumes:
+  mongo_data:
+
+networks:
+  bg-network:
+    driver: bridge

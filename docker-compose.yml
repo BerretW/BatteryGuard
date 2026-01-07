@@ -18,10 +18,12 @@ services:
     restart: unless-stopped
     environment:
       - MONGO_URL=mongodb://mongo:27017
-      - SECRET_KEY=vas_tajny_klic_pro_jwt_tokeny_zmente_v_produkci
-      - ADMIN_EMAIL=admin@appartus.cz
-      - ADMIN_PASSWORD=zmente_tohle_heslo
-      - ALLOWED_ORIGINS=http://battery.appartus.cz,https://battery.appartus.cz,http://localhost,http://prox2.appartus.cz
+      - SECRET_KEY=${SECRET_KEY:-vas_tajny_klic_pro_jwt_tokeny_zmente_v_produkci}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@appartus.cz}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-zmente_tohle_heslo}
+      - ALLOWED_ORIGINS=http://battery.appartus.cz,https://battery.appartus.cz,http://localhost,http://localhost:3000,http://prox2.appartus.cz
+      # GOOGLE CONFIG PRO BACKEND (pro ověření tokenu)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-vase_google_client_id.apps.googleusercontent.com}
     depends_on:
       - mongo
     networks:
@@ -31,13 +33,14 @@ services:
   frontend:
     build: 
       context: ./frontend
-      # PŘIDÁNO: Předání proměnné při buildu (volitelné, viz níže)
+      # Předání proměnných při buildu (Vite potřebuje ENV při buildu)
       args:
         - VITE_API_BASE_URL=/api
+        - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-vase_google_client_id.apps.googleusercontent.com}
     container_name: batteryguard-frontend
     restart: unless-stopped
     ports:
-      - "8043:80"
+      - "80:80"
     depends_on:
       - backend
     networks:

@@ -1,44 +1,51 @@
 import os
+import requests
 from typing import List, Optional
+from datetime import datetime, timedelta
+
 from fastapi import FastAPI, HTTPException, Depends, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
 from pydantic import BaseModel, EmailStr
-import requests
-# Import modelů
+
+# Google Auth Libraries
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+
+# Import modelů (předpokládáme, že soubor models.py existuje ve stejné složce)
 from models import BuildingObject, ObjectGroup, UserAuth
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
-
-# --- KONFIGURACE ---
+# --- KONFIGURACE Z PROSTŘEDÍ ---
+# Načtení proměnných z Docker Compose / ENV
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo:27017")
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey_change_me_in_prod")
-# Načtení údajů z Docker Compose
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@local.cz")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@appartus.cz")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 
+# Nastavení JWT
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 1 týden
 
 app = FastAPI(title="BatteryGuard API")
 
-# CORS
+# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS, # Použijeme nastavení z docker-compose
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# DB Klient
+# --- DATABÁZE ---
 client = AsyncIOMotorClient(MONGO_URL)
 db = client.batteryguard
 
-# Auth Security
+# --- SECURITY ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # --- POMOCNÉ FUNKCE ---
@@ -55,6 +62,16 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+def fix_mongo_id(document: dict):
+    """Pomocná funkce pro převod MongoDB _id na string id pro frontend"""
+    if not document:
+        return None
+    if "_id" in document:
+        if "id" not in document:
+            document["id"] = str(document["_id"])
+        del document["_id"]
+    return document
 
 # --- STARTUP EVENT (Vytvoření admina) ---
 @app.on_event("startup")
@@ -100,9 +117,7 @@ async def get_current_user(authorization: str = Header(None)):
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
         
-    user["id"] = str(user.get("id", ""))
-    if "_id" in user: del user["_id"]
-    return user
+    return fix_mongo_id(user)
 
 async def get_current_admin(user: dict = Depends(get_current_user)):
     if user.get("role") != "ADMIN":
@@ -113,9 +128,9 @@ async def get_current_admin(user: dict = Depends(get_current_user)):
 
 @app.get("/")
 async def health_check():
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": "1.0.0", "google_client_configured": bool(GOOGLE_CLIENT_ID)}
 
-# --- AUTH ---
+# --- AUTHENTICATION ---
 
 class LoginRequest(BaseModel):
     email: str
@@ -126,15 +141,18 @@ class RegisterRequest(BaseModel):
     email: str
     password: str = "pass"
 
+class GoogleLoginRequest(BaseModel):
+    token: str
+
 @app.post("/auth/login")
 async def login(creds: LoginRequest):
-    # Standardní hledání v DB (už žádný hardcoded fallback)
     user = await db.users.find_one({"email": creds.email})
     
     if not user:
         raise HTTPException(status_code=400, detail="Nesprávný email nebo heslo")
     
-    if not verify_password(creds.password, user["hashed_password"]):
+    # Pokud uživatel má heslo (není jen přes Google), ověříme ho
+    if user.get("hashed_password") and not verify_password(creds.password, user["hashed_password"]):
          raise HTTPException(status_code=400, detail="Nesprávný email nebo heslo")
 
     if not user.get("isAuthorized", False):
@@ -142,17 +160,9 @@ async def login(creds: LoginRequest):
 
     token = create_access_token(data={"sub": user["email"]})
     
-    # Return user data mapped for frontend
     return {
         "token": token,
-        "user": {
-            "id": str(user.get("id", "")), # Bezpečnější get
-            "name": user["name"],
-            "email": user["email"],
-            "role": user["role"],
-            "isAuthorized": user["isAuthorized"],
-            "createdAt": user["createdAt"]
-        }
+        "user": fix_mongo_id(user)
     }
 
 @app.post("/auth/register")
@@ -174,41 +184,57 @@ async def register(req: RegisterRequest):
     await db.users.insert_one(new_user)
     return {"status": "success", "message": "Registrace úspěšná, vyčkejte na schválení."}
 
-class GoogleLoginRequest(BaseModel):
-    token: str
-
 @app.post("/auth/google")
 async def google_login(req: GoogleLoginRequest):
-    # 1. Ověření tokenu u Google UserInfo API
+    email = ""
+    name = ""
+    
+    # 1. Pokusíme se ověřit token jako ID Token (preferovaná metoda)
     try:
-        response = requests.get(
-            "https://www.googleapis.com/oauth2/v3/userinfo",
-            headers={"Authorization": f"Bearer {req.token}"}
+        # Pokud nemáme nastaveno Client ID, warning, ale zkusíme validovat bez audience checku (méně bezpečné)
+        # nebo spadneme do except bloku.
+        id_info = id_token.verify_oauth2_token(
+            req.token, 
+            google_requests.Request(), 
+            GOOGLE_CLIENT_ID
         )
-        user_info = response.json()
+        email = id_info['email']
+        name = id_info.get('name', email.split('@')[0])
         
-        if "error" in user_info:
-            raise HTTPException(status_code=400, detail="Invalid Google Token")
+    except Exception as e1:
+        # 2. Fallback: Pokud selže ID token verification, zkusíme to jako Access Token
+        # (Toto používá useGoogleLogin hook ve frontendu)
+        try:
+            print(f"ID Token verification failed ({str(e1)}), trying Access Token via UserInfo endpoint...")
+            response = requests.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {req.token}"}
+            )
+            user_info = response.json()
             
-        email = user_info["email"]
-        name = user_info["name"]
-        
-    except Exception:
-        raise HTTPException(status_code=400, detail="Failed to verify Google Token")
+            if "error" in user_info:
+                print(f"UserInfo error: {user_info}")
+                raise ValueError("Invalid Google Access Token")
+                
+            email = user_info["email"]
+            name = user_info["name"]
+            
+        except Exception as e2:
+            print(f"Google Auth Failed. ID Token Error: {e1}, Access Token Error: {e2}")
+            raise HTTPException(status_code=400, detail="Failed to verify Google Token")
 
-    # 2. Najít nebo vytvořit uživatele v DB
+    # 3. Logika přihlášení / registrace v DB
     user = await db.users.find_one({"email": email})
     
     if not user:
-        # Pokud neexistuje, vytvoříme ho (automaticky jako TECHNICIAN a neschválený?)
-        # Nebo pokud má doménu vaší firmy, rovnou schválíme.
+        # Registrace nového uživatele přes Google
         new_user = {
             "id": str(datetime.utcnow().timestamp()).replace('.', ''),
             "name": name,
             "email": email,
             "role": "TECHNICIAN",
             "isAuthorized": False, # Čeká na schválení adminem
-            "auth_provider": "google", # Značka, že je přes Google
+            "auth_provider": "google",
             "hashed_password": "", # Nemá heslo
             "createdAt": datetime.utcnow().isoformat()
         }
@@ -218,19 +244,14 @@ async def google_login(req: GoogleLoginRequest):
     if not user.get("isAuthorized", False):
         raise HTTPException(status_code=403, detail="Účet čeká na schválení administrátorem")
 
-    # 3. Vygenerovat náš JWT token
+    # 4. Vygenerovat náš JWT token
     access_token = create_access_token(data={"sub": user["email"]})
     
     return {
         "token": access_token,
-        "user": {
-            "id": user["id"],
-            "name": user["name"],
-            "email": user["email"],
-            "role": user["role"],
-            "isAuthorized": user["isAuthorized"]
-        }
+        "user": fix_mongo_id(user)
     }
+
 # --- DATA ENDPOINTS (Protected) ---
 
 @app.get("/objects", response_model=List[BuildingObject])
@@ -238,14 +259,12 @@ async def get_objects(user: dict = Depends(get_current_user)):
     cursor = db.objects.find({})
     objects = []
     async for doc in cursor:
-        if "_id" in doc: del doc["_id"]
-        objects.append(doc)
+        objects.append(fix_mongo_id(doc))
     return objects
 
 @app.post("/objects")
 async def save_objects(objects: List[BuildingObject], user: dict = Depends(get_current_user)):
-    # Sync strategie: Nahradit vše. 
-    # V produkci pro velké objemy dat nevhodné, ale pro tuto architekturu App.tsx nutné.
+    # Sync strategie: Nahradit vše (pro jednoduchost architektury)
     await db.objects.delete_many({})
     
     if objects:
@@ -259,8 +278,7 @@ async def get_groups(user: dict = Depends(get_current_user)):
     cursor = db.groups.find({})
     groups = []
     async for doc in cursor:
-        if "_id" in doc: del doc["_id"]
-        groups.append(doc)
+        groups.append(fix_mongo_id(doc))
     return groups
 
 @app.post("/groups")
@@ -278,6 +296,7 @@ async def get_all_users(admin: dict = Depends(get_current_admin)):
     cursor = db.users.find({})
     users = []
     async for u in cursor:
+        u = fix_mongo_id(u)
         users.append({
             "id": u.get("id"),
             "name": u.get("name"),

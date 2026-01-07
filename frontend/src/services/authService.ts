@@ -28,7 +28,9 @@ export const authService = {
     const users = localStorage.getItem(USERS_KEY);
     return users ? JSON.parse(users) : [];
   },
-
+saveToken: (token: string) => {
+      localStorage.setItem(TOKEN_KEY, token);
+  },
   getCurrentUser: (): AppUser | null => {
     const user = localStorage.getItem(CURRENT_USER_KEY);
     return user ? JSON.parse(user) : null;

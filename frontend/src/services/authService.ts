@@ -7,11 +7,14 @@ const CURRENT_USER_KEY = 'bg_current_user';
 // Helper pro zjištění, zda používáme remote API
 const isRemote = () => {
     const config = localStorage.getItem('api_config');
-    return config && JSON.parse(config).mode === 'REMOTE';
+    // Defaultně REMOTE, pokud není nastaveno jinak (pro produkci)
+    if (!config) return true;
+    return JSON.parse(config).mode === 'REMOTE';
 };
 
 const getBaseUrl = () => {
     const config = localStorage.getItem('api_config');
+    // Defaultně /api (pro produkci)
     const url = config ? JSON.parse(config).baseUrl : '/api';
     return url.endsWith('/') ? url.slice(0, -1) : url;
 };

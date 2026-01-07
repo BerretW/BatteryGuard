@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { HashRouter as Router, Routes, Route, Link, useNavigate, useParams, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { 
   Building2, 
   ClipboardList, 
@@ -18,10 +17,16 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
+
+// Importy typů
 import { BuildingObject, AppUser, ObjectGroup } from './types';
+
+// Importy služeb
 import { dataStore } from './services/dataStore';
 import { getApiService } from './services/apiService';
 import { authService } from './services/authService';
+
+// Importy komponent
 import Dashboard from './components/Dashboard';
 import ObjectList from './components/ObjectList';
 import ObjectDetail from './components/ObjectDetail';
@@ -39,13 +44,17 @@ const App: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [apiMode, setApiMode] = useState<'MOCK' | 'REMOTE'>('MOCK');
+  
+  // Dark mode logic
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark' || 
       (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
   
+  // Získání instance API
   const api = getApiService();
 
+  // Effect pro Dark Mode
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -56,17 +65,30 @@ const App: React.FC = () => {
     }
   }, [isDarkMode]);
 
+  // Effect pro načítání dat po přihlášení
   useEffect(() => {
     if (!currentUser) {
       setIsLoading(false);
       return;
     }
 
+    // Načtení konfigurace API
     const config = localStorage.getItem('api_config');
-    if (config) setApiMode(JSON.parse(config).mode);
+    if (config) {
+      try {
+        setApiMode(JSON.parse(config).mode);
+      } catch (e) {
+        console.error("Chyba parsování configu", e);
+      }
+    }
     
     const fetchData = async () => {
       try {
+        setIsLoading(true);
+        // Paralelní načtení objektů a skupin
+        // Poznámka: v reálném API by i skupiny měly jít přes api.getGroups(),
+        // zde pro zjednodušení kombinujeme API pro objekty a LocalStore pro skupiny,
+        // pokud nemáte implementovaný endpoint na skupiny v RemoteApiService.
         const [objData, groupData] = await Promise.all([
           api.getObjects(),
           Promise.resolve(dataStore.getGroups())
@@ -75,12 +97,16 @@ const App: React.FC = () => {
         setGroups(groupData);
       } catch (error) {
         console.error("Chyba při načítání dat:", error);
+        // Fallback na lokální data při chybě API, aby aplikace nespadla
+        if (apiMode === 'REMOTE') {
+            alert("Nepodařilo se načíst data ze serveru. Zkontrolujte připojení.");
+        }
       } finally {
         setIsLoading(false);
       }
     };
     fetchData();
-  }, [currentUser]);
+  }, [currentUser, apiMode]);
 
   const handleLogin = () => {
     setCurrentUser(authService.getCurrentUser());
@@ -96,7 +122,9 @@ const App: React.FC = () => {
     try {
       await api.saveObjects(newObjects);
     } catch (error) {
-      alert("Chyba při ukládání na server. Data byla uložena pouze lokálně.");
+      console.error("Save error:", error);
+      alert("Chyba při ukládání na server. Data byla uložena pouze dočasně v prohlížeči.");
+      // Fallback save to local store just in case
       dataStore.saveObjects(newObjects);
     }
   };
@@ -106,17 +134,22 @@ const App: React.FC = () => {
     dataStore.saveGroups(newGroups);
   };
 
+  // 1. Stav: Nepřihlášený uživatel
   if (!currentUser) {
     return <Login onLogin={handleLogin} />;
   }
 
+  // 2. Stav: Přihlášený, ale neautorizovaný uživatel (čeká na schválení)
   if (!currentUser.isAuthorized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6 text-center">
         <div className="max-w-md bg-white dark:bg-slate-900 p-10 rounded-3xl shadow-xl border border-gray-100 dark:border-slate-800">
           <Clock className="w-16 h-16 text-amber-500 mx-auto mb-6" />
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Čekání na autorizaci</h1>
-          <p className="text-gray-500 dark:text-slate-400 mt-4">Váš účet <span className="font-bold text-gray-800 dark:text-slate-200">{currentUser.email}</span> byl vytvořen, ale administrátor jej zatím neschválil.</p>
+          <p className="text-gray-500 dark:text-slate-400 mt-4">
+            Váš účet <span className="font-bold text-gray-800 dark:text-slate-200">{currentUser.email}</span> byl vytvořen, 
+            ale administrátor jej zatím neschválil.
+          </p>
           <button 
             onClick={handleLogout}
             className="mt-8 px-6 py-2 bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 rounded-xl font-bold hover:bg-gray-200 transition"
@@ -128,9 +161,12 @@ const App: React.FC = () => {
     );
   }
 
+  // 3. Stav: Plně přihlášený uživatel -> Hlavní aplikace
   return (
     <Router>
       <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+        
+        {/* Mobilní overlay pro sidebar */}
         {isSidebarOpen && (
           <div 
             className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden" 
@@ -138,6 +174,7 @@ const App: React.FC = () => {
           />
         )}
 
+        {/* Sidebar */}
         <aside className={`
           fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 dark:bg-slate-950 border-r border-slate-800 text-white transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -160,19 +197,24 @@ const App: React.FC = () => {
               <SidebarLink to="/map" icon={<MapIcon />} label="Mapa" onClick={() => setSidebarOpen(false)} />
               <SidebarLink to="/calendar" icon={<CalendarIcon />} label="Kalendář" onClick={() => setSidebarOpen(false)} />
               <SidebarLink to="/maintenance" icon={<ClipboardList />} label="Plán údržby" onClick={() => setSidebarOpen(false)} />
-              <SidebarLink to="/users" icon={<Users />} label="Uživatelé" onClick={() => setSidebarOpen(false)} />
+              
+              {/* Sekce pouze pro Adminy */}
+              {currentUser.role === 'ADMIN' && (
+                <SidebarLink to="/users" icon={<Users />} label="Uživatelé" onClick={() => setSidebarOpen(false)} />
+              )}
+              
               <SidebarLink to="/settings" icon={<SettingsIcon />} label="Nastavení" onClick={() => setSidebarOpen(false)} />
             </nav>
 
             <div className="p-4 mt-auto border-t border-slate-800">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-slate-700 font-semibold text-blue-400">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-slate-700 font-semibold text-blue-400 uppercase">
                     {currentUser.name[0]}
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">{currentUser.name}</p>
-                    <p className="text-xs text-slate-400 capitalize">{currentUser.role}</p>
+                  <div className="overflow-hidden">
+                    <p className="text-sm font-medium truncate">{currentUser.name}</p>
+                    <p className="text-xs text-slate-400 capitalize truncate">{currentUser.role}</p>
                   </div>
                 </div>
                 <button 
@@ -187,7 +229,9 @@ const App: React.FC = () => {
           </div>
         </aside>
 
+        {/* Hlavní obsah */}
         <main className="flex-1 flex flex-col h-full overflow-hidden">
+          {/* Header */}
           <header className="flex items-center justify-between px-4 md:px-6 py-3 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 shadow-sm z-30">
             <button 
               onClick={() => setSidebarOpen(true)}
@@ -198,8 +242,8 @@ const App: React.FC = () => {
             <div className="flex-1 ml-3 lg:ml-0 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <h1 className="text-lg font-bold text-gray-800 dark:text-white truncate">BatteryGuard Pro</h1>
-                <div className="hidden sm:flex items-center px-1.5 py-0.5 bg-gray-100 dark:bg-slate-800 rounded text-[9px] font-bold text-gray-500 dark:text-slate-400 uppercase">
-                  {apiMode}
+                <div className={`hidden sm:flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${apiMode === 'REMOTE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {apiMode === 'REMOTE' ? 'ONLINE' : 'MOCK MODE'}
                 </div>
               </div>
               
@@ -212,6 +256,7 @@ const App: React.FC = () => {
             </div>
           </header>
 
+          {/* Obsah stránky (Router View) */}
           <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-full space-y-4">
@@ -228,7 +273,12 @@ const App: React.FC = () => {
                 <Route path="/object/:id" element={<ObjectDetail objects={objects} setObjects={updateObjects} />} />
                 <Route path="/maintenance" element={<MaintenancePlanner objects={objects} setObjects={updateObjects} />} />
                 <Route path="/settings" element={<Settings objects={objects} />} />
-                <Route path="/users" element={<UserManagement />} />
+                
+                {/* Admin only route */}
+                <Route path="/users" element={
+                   currentUser.role === 'ADMIN' ? <UserManagement /> : <Navigate to="/" />
+                } />
+                
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             )}
@@ -239,17 +289,47 @@ const App: React.FC = () => {
   );
 };
 
+// --- Pomocná komponenta pro User Management (Admin) ---
+// Poznámka: V reálné aplikaci by toto mělo být v samostatném souboru components/UserManagement.tsx
 const UserManagement: React.FC = () => {
-  const [users, setUsers] = useState<AppUser[]>(authService.getUsers());
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [loading, setLoading] = useState(false);
   const current = authService.getCurrentUser();
+
+  // Načtení uživatelů při mountu
+  useEffect(() => {
+    const fetchUsers = async () => {
+        // Pokud jsme v REMOTE módu, fetchovali bychom z API
+        // Zde zatím používáme helper z authService, který v MOCK vrací localstorage
+        // a v REMOTE (pokud by byl implementován) vrací API data.
+        // Pro jednoduchost zde ponecháme synchronní volání, ale v budoucnu async.
+        setUsers(authService.getUsers());
+        
+        // Pokud je potřeba fetchovat z API endpointu:
+        // const apiUsers = await api.getUsers(); setUsers(apiUsers);
+    };
+    fetchUsers();
+  }, []);
 
   if (current?.role !== 'ADMIN') {
     return <div className="p-10 text-center text-red-500 font-bold">Nemáte oprávnění k této sekci.</div>;
   }
 
-  const toggleAuth = (userId: string, isAuth: boolean, role: 'ADMIN' | 'TECHNICIAN') => {
-    authService.authorizeUser(userId, role, isAuth);
-    setUsers(authService.getUsers());
+  const toggleAuth = async (userId: string, isAuth: boolean, role: 'ADMIN' | 'TECHNICIAN') => {
+    setLoading(true);
+    try {
+        await authService.authorizeUser(userId, role, isAuth);
+        // Refresh users
+        setUsers(authService.getUsers());
+        
+        // Pokud jsme v REMOTE módu, je nutné znovu načíst seznam, protože authService.getUsers()
+        // v aktuální implementaci může vracet jen cached data.
+        // Pro remote bychom zavolali API znovu.
+    } catch (e) {
+        alert("Chyba při změně oprávnění");
+    } finally {
+        setLoading(false);
+    }
   };
 
   return (
@@ -261,23 +341,42 @@ const UserManagement: React.FC = () => {
             <tr>
               <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Uživatel</th>
               <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Role</th>
+              <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Stav</th>
               <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Akce</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
             {users.map(u => (
               <tr key={u.id}>
-                <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{u.name} <span className="font-normal text-gray-400 text-xs">({u.email})</span></td>
+                <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
+                    {u.name} 
+                    <div className="font-normal text-gray-400 text-xs">{u.email}</div>
+                </td>
                 <td className="px-6 py-4 capitalize text-gray-600 dark:text-slate-400">{u.role}</td>
                 <td className="px-6 py-4">
+                    {u.isAuthorized 
+                        ? <span className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold">Aktivní</span> 
+                        : <span className="text-amber-600 bg-amber-50 px-2 py-1 rounded text-xs font-bold">Čeká</span>
+                    }
+                </td>
+                <td className="px-6 py-4">
                   {u.id !== current.id && (
-                    <button onClick={() => toggleAuth(u.id, !u.isAuthorized, u.role)} className="text-blue-600 dark:text-blue-400 font-bold hover:underline">
+                    <button 
+                        onClick={() => toggleAuth(u.id, !u.isAuthorized, u.role)} 
+                        disabled={loading}
+                        className={`font-bold hover:underline ${u.isAuthorized ? 'text-red-500' : 'text-blue-600'}`}
+                    >
                       {u.isAuthorized ? 'Deaktivovat' : 'Autorizovat'}
                     </button>
                   )}
                 </td>
               </tr>
             ))}
+            {users.length === 0 && (
+                <tr>
+                    <td colSpan={4} className="p-6 text-center text-gray-500">Žádní uživatelé</td>
+                </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -285,9 +384,10 @@ const UserManagement: React.FC = () => {
   );
 };
 
+// --- Pomocná komponenta pro Sidebar Link ---
 const SidebarLink: React.FC<{ to: string, icon: React.ReactNode, label: string, onClick: () => void }> = ({ to, icon, label, onClick }) => (
-  <Link to={to} onClick={onClick} className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-slate-800 dark:hover:bg-slate-900 transition-colors text-slate-300 hover:text-white">
-    {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5' })}
+  <Link to={to} onClick={onClick} className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-slate-800 dark:hover:bg-slate-900 transition-colors text-slate-300 hover:text-white group">
+    {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5 group-hover:text-blue-400 transition-colors' })}
     <span className="font-medium">{label}</span>
   </Link>
 );

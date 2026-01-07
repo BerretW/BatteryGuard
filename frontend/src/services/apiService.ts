@@ -73,10 +73,18 @@ class RemoteApiService implements IApiService {
 
 export const getApiService = (): IApiService => {
   const configRaw = localStorage.getItem('api_config');
-  // Defaultně v Dockeru použijeme relativní cestu /api, která jde přes Nginx
-  const config: ApiConfig = configRaw 
-    ? JSON.parse(configRaw) 
-    : { mode: 'MOCK', baseUrl: '/api' }; // Default fallback
+  
+  let config: ApiConfig;
+
+  if (configRaw) {
+    config = JSON.parse(configRaw);
+  } else {
+    // VÝCHOZÍ NASTAVENÍ PRO PRODUKCI
+    config = { 
+      mode: 'REMOTE', 
+      baseUrl: '/api' // Relativní cesta - Nginx se postará o doménu
+    };
+  }
   
   if (config.mode === 'REMOTE') {
     return new RemoteApiService(config.baseUrl || '/api');

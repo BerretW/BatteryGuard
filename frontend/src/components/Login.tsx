@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Mail, Lock, LogIn, Chrome } from 'lucide-react';
 import { authService } from '../services/authService';
-
+import { useGoogleLogin } from '@react-oauth/google';
 interface LoginProps {
   onLogin: () => void;
 }
@@ -31,10 +31,23 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       }
     }
   };
+    const loginWithGoogle = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      // Pošleme access token na náš backend
+      const res = await fetch('http://localhost:8000/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: tokenResponse.access_token })
+      });
+      const data = await res.json();
+      if (data.token) {
+        // Uložit token a přihlásit uživatele stejně jako u hesla
+        authService.saveToken(data.token);
+        onLogin();
+      }
+    },
+  });
 
-  const handleGoogleLogin = () => {
-    alert('Google Login API integration is ready. Client ID needed for production.');
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
@@ -106,13 +119,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-gray-400">Nebo</span></div>
           </div>
 
-          <button 
-            onClick={handleGoogleLogin}
-            className="w-full py-3 border border-gray-200 rounded-xl font-semibold flex items-center justify-center space-x-2 hover:bg-gray-50 transition"
-          >
-            <Chrome className="w-5 h-5 text-red-500" />
-            <span>Přihlásit přes Google</span>
-          </button>
+<button onClick={() => loginWithGoogle()}>Přihlásit přes Google</button>
+
 
           <p className="mt-8 text-center text-sm text-gray-500">
             {isRegister ? 'Už máte účet?' : 'Nemáte ještě účet?'}

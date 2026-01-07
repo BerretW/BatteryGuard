@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # 1. Databáze (MongoDB)
+  # 1. Databáze
   mongo:
     image: mongo:6.0
     container_name: batteryguard-mongo
@@ -11,7 +11,7 @@ services:
     networks:
       - bg-network
 
-  # 2. Backend (FastAPI API)
+  # 2. Backend
   backend:
     build: ./backend
     container_name: batteryguard-backend
@@ -19,18 +19,25 @@ services:
     environment:
       - MONGO_URL=mongodb://mongo:27017
       - SECRET_KEY=vas_tajny_klic_pro_jwt_tokeny_zmente_v_produkci
+      - ADMIN_EMAIL=admin@appartus.cz
+      - ADMIN_PASSWORD=zmente_tohle_heslo
+      - ALLOWED_ORIGINS=http://battery.appartus.cz,https://battery.appartus.cz,http://localhost
     depends_on:
       - mongo
     networks:
       - bg-network
 
-  # 3. Frontend (React + Nginx Proxy)
+  # 3. Frontend
   frontend:
-    build: ./frontend
+    build: 
+      context: ./frontend
+      # PŘIDÁNO: Předání proměnné při buildu (volitelné, viz níže)
+      args:
+        - VITE_API_BASE_URL=/api
     container_name: batteryguard-frontend
     restart: unless-stopped
     ports:
-      - "80:80"  # Jediný veřejně vystavený port
+      - "8043:80"
     depends_on:
       - backend
     networks:

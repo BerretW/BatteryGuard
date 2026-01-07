@@ -21,7 +21,7 @@ services:
       - SECRET_KEY=vas_tajny_klic_pro_jwt_tokeny_zmente_v_produkci
       - ADMIN_EMAIL=admin@appartus.cz
       - ADMIN_PASSWORD=zmente_tohle_heslo
-      - ALLOWED_ORIGINS=http://battery.appartus.cz,https://battery.appartus.cz,http://localhost
+      - ALLOWED_ORIGINS=http://battery.appartus.cz,https://battery.appartus.cz,http://localhost,http://prox2.appartus.cz
     depends_on:
       - mongo
     networks:

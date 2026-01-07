@@ -1,0 +1,7 @@
+{
+  "name": "BatteryGuard Pro",
+  "description": "Profesionální správa objektů a údržba akumulátorů pro systémy EPS, EZS a další slaboproudé technologie.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

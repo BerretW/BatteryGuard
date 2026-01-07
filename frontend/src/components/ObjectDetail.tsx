@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Shield, Users, Calendar, ClipboardCheck, AlertCircle } from 'lucide-react';
 import { 
   BuildingObject, BatteryStatus, Contact, RegularEvent, ObjectGroup, 
-  TechType, Technology, Battery, LogEntry, FormTemplate 
+  TechType, Technology, Battery, LogEntry, FormTemplate, PendingIssue 
 } from '../types';
 import { getApiService } from '../services/apiService';
 import { authService } from '../services/authService';
@@ -133,6 +133,72 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
     updateCurrentObject({ ...object, technologies: updatedTechnologies });
   };
 
+  // --- NOVÁ LOGIKA: Rychlá změna stavu s automatickým zápisem do logu ---
+  const handleBatteryStatusChange = (techId: string, batteryId: string, newStatus: BatteryStatus) => {
+    const tech = object.technologies.find(t => t.id === techId);
+    const battery = tech?.batteries.find(b => b.id === batteryId);
+    
+    // Pokud baterie neexistuje nebo je stav stejný, nic neděláme
+    if (!tech || !battery || battery.status === newStatus) return;
+
+    const oldStatus = battery.status;
+    let updatedBattery = { ...battery, status: newStatus };
+    let logNote = 'Automatický záznam z detailu objektu';
+
+    // === LOGIKA PRO VÝMĚNU (REPLACED) ===
+    if (newStatus === BatteryStatus.REPLACED) {
+        const now = new Date();
+        const installDateStr = now.toISOString().split('T')[0]; // Dnešek YYYY-MM-DD
+        
+        const nextDate = new Date(now);
+        nextDate.setFullYear(nextDate.getFullYear() + 2); // + 2 roky
+        const nextReplaceStr = nextDate.toISOString().split('T')[0];
+
+        // Aktualizujeme data v objektu baterie
+        updatedBattery = {
+            ...updatedBattery,
+            installDate: installDateStr,
+            nextReplacementDate: nextReplaceStr
+        };
+
+        logNote += `. Aktualizováno datum instalace (${installDateStr}) a další výměny (${nextReplaceStr}).`;
+    }
+    // =====================================
+
+    // 1. Vytvoření automatického záznamu do deníku
+    const newLogEntry: LogEntry = {
+      id: Math.random().toString(36).substr(2, 9),
+      templateId: 'system-auto-status', // Virtuální ID pro systémové zprávy
+      templateName: 'Rychlá změna stavu',
+      date: new Date().toISOString(),
+      author: currentUser?.name || 'Systém',
+      data: {
+        'Technologie': tech.name,
+        'Baterie': `${battery.capacityAh}Ah / ${battery.voltageV}V`,
+        'Původní stav': oldStatus,
+        'Nový stav': newStatus,
+        'Poznámka': logNote
+      }
+    };
+
+    // 2. Aktualizace objektu (změna stavu baterie + přidání logu)
+    const updatedTechnologies = object.technologies.map(t => {
+      if (t.id !== techId) return t;
+      return {
+        ...t,
+        batteries: t.batteries.map(b => 
+          b.id === batteryId ? updatedBattery : b
+        )
+      };
+    });
+
+    updateCurrentObject({
+      ...object,
+      technologies: updatedTechnologies,
+      logEntries: [newLogEntry, ...(object.logEntries || [])]
+    });
+  };
+
   // Contacts
   const addContact = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -183,11 +249,18 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
     updateCurrentObject({ ...object, scheduledEvents: (object.scheduledEvents || []).filter(e => e.id !== id) });
   };
 
-  // Logs
+  // --- Logs & Future Notes Logic ---
   const handleAddLogEntry = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Získání "futureNote" přímo z formuláře (protože není v logFormData state)
+    const form = e.target as HTMLFormElement;
+    const futureNote = (form.elements.namedItem('futureNote') as HTMLTextAreaElement)?.value;
+
     const template = templates.find(t => t.id === selectedTemplateId);
     if (!template) return;
+
+    // 1. Vytvoření standardního záznamu v deníku
     const newEntry: LogEntry = {
       id: Math.random().toString(36).substr(2, 9),
       templateId: template.id,
@@ -196,9 +269,44 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
       author: currentUser?.name || 'Neznámý',
       data: logFormData
     };
-    updateCurrentObject({ ...object, logEntries: [newEntry, ...(object.logEntries || [])] });
+
+    let updatedObject = {
+       ...object, 
+       logEntries: [newEntry, ...(object.logEntries || [])] 
+    };
+
+    // 2. Pokud existuje "Zpráva pro budoucí já", vytvoříme PendingIssue
+    if (futureNote && futureNote.trim() !== "") {
+        const newIssue: PendingIssue = {
+            id: Math.random().toString(36).substr(2, 9),
+            text: futureNote,
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.name || 'Neznámý',
+            status: 'OPEN'
+        };
+        // Pokud pole neexistuje, vytvoříme ho
+        updatedObject.pendingIssues = [newIssue, ...(object.pendingIssues || [])];
+    }
+
+    updateCurrentObject(updatedObject);
     setLogModalOpen(false);
     setLogFormData({});
+  };
+
+  // --- Handlers pro Pending Issues (Správa závad) ---
+  const toggleIssueStatus = (issueId: string) => {
+     const updatedIssues = (object.pendingIssues || []).map(issue => 
+        issue.id === issueId 
+            ? { ...issue, status: issue.status === 'OPEN' ? 'RESOLVED' : 'OPEN' } as PendingIssue
+            : issue
+     );
+     updateCurrentObject({ ...object, pendingIssues: updatedIssues });
+  };
+
+  const deleteIssue = (issueId: string) => {
+      if(!confirm("Smazat tuto poznámku?")) return;
+      const updatedIssues = (object.pendingIssues || []).filter(issue => issue.id !== issueId);
+      updateCurrentObject({ ...object, pendingIssues: updatedIssues });
   };
 
   // Edit Object
@@ -216,7 +324,6 @@ const handleEditObject = (e: React.FormEvent<HTMLFormElement>) => {
       address: fd.get('address') as string,
       internalNotes: fd.get('internalNotes') as string,
       groupId: fd.get('groupId') as string || undefined,
-      // Přidáno zpracování souřadnic:
       lat: latVal ? Number(latVal) : undefined,
       lng: lngVal ? Number(lngVal) : undefined
     };
@@ -249,6 +356,8 @@ const handleEditObject = (e: React.FormEvent<HTMLFormElement>) => {
             onRemoveTech={removeTechnology}
             onAddBattery={(techId) => setBatteryModalOpen({ techId })}
             onRemoveBattery={removeBattery}
+            // Předání handleru pro rychlou změnu
+            onStatusChange={handleBatteryStatusChange}
           />
         )}
         {activeTab === 'info' && (
@@ -262,9 +371,12 @@ const handleEditObject = (e: React.FormEvent<HTMLFormElement>) => {
         {activeTab === 'events' && (
           <EventsTab 
             events={object.scheduledEvents}
+            pendingIssues={object.pendingIssues || []} // Předání odložených závad
             onAddEvent={() => { setEditingEvent(null); setEventModalOpen(true); }}
             onEditEvent={(ev) => { setEditingEvent(ev); setEventModalOpen(true); }}
             onRemoveEvent={removeEvent}
+            onToggleIssue={toggleIssueStatus} // Handler pro změnu stavu závady
+            onDeleteIssue={deleteIssue}       // Handler pro smazání závady
           />
         )}
         {activeTab === 'log' && (

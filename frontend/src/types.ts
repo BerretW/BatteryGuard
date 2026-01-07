@@ -105,6 +105,7 @@ export interface BuildingObject {
   technologies: Technology[];
   logEntries: LogEntry[];
   scheduledEvents: RegularEvent[];
+  pendingIssues?: PendingIssue[];
   groupId?: string;
   lat?: number;
   lng?: number;
@@ -124,4 +125,11 @@ export type ApiMode = 'MOCK' | 'REMOTE';
 export interface ApiConfig {
   mode: ApiMode;
   baseUrl: string;
+}
+export interface PendingIssue {
+  id: string;
+  text: string;
+  createdAt: string;
+  createdBy: string;
+  status: 'OPEN' | 'RESOLVED';
 }

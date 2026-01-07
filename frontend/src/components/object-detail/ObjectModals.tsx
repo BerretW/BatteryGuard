@@ -233,6 +233,7 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
       {props.isLogModalOpen && (
         <Modal title="Nový záznam" onClose={() => props.setLogModalOpen(false)}>
           <div className="space-y-6">
+            {/* ... Výběr šablony zůstává stejný ... */}
             <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Typ záznamu</label>
                 <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
@@ -249,11 +250,15 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
             </div>
             
             <form onSubmit={props.onAddLogEntry} className="space-y-4">
+                {/* Dynamická pole šablony */}
                 {props.templates.find(t => t.id === props.selectedTemplateId)?.fields.map(field => (
+                    // ... zde je kód pro vykreslení polí (input/select/textarea) ...
+                    // ... (tento blok nechte beze změny) ...
                     <div key={field.id}>
                         <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
                             {field.label} {field.required && <span className="text-red-500">*</span>}
                         </label>
+                        {/* ... kód inputů ... */}
                         {field.type === 'textarea' ? (
                             <textarea 
                                 required={field.required}
@@ -280,6 +285,21 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
                         )}
                     </div>
                 ))}
+
+                 {/* --- NOVÁ SEKCE: PRO BUDOUCÍ JÁ --- */}
+                 <div className="pt-4 mt-4 border-t border-gray-100 dark:border-slate-800">
+                    <label className="block text-xs font-black uppercase tracking-widest text-amber-500 mb-2 flex items-center gap-2">
+                       Zpráva pro mé budoucí já (Odložená závada)
+                    </label>
+                    <textarea 
+                        name="futureNote"
+                        className="w-full px-4 py-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl font-medium dark:text-amber-100 outline-none focus:ring-2 focus:ring-amber-500 placeholder-amber-300"
+                        rows={2}
+                        placeholder="Např. Baterie 2 má zoxidovaný kontakt, příště vyčistit..."
+                    />
+                 </div>
+                 {/* ---------------------------------- */}
+
                  <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-500/20 active:scale-95 transition-all mt-4">Uložit záznam</button>
             </form>
           </div>

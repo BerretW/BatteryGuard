@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Plus, Trash2, Battery as BatteryIcon, X } from 'lucide-react';
+import { Shield, Plus, Trash2, Battery as BatteryIcon, X, CheckCircle, AlertTriangle, AlertOctagon, RefreshCw } from 'lucide-react';
 import { BuildingObject, BatteryStatus } from '../../types';
 
 interface TechTabProps {
@@ -8,6 +8,8 @@ interface TechTabProps {
   onRemoveTech: (id: string) => void;
   onAddBattery: (techId: string) => void;
   onRemoveBattery: (techId: string, batteryId: string) => void;
+  // PŘIDÁNO:
+  onStatusChange: (techId: string, batteryId: string, newStatus: BatteryStatus) => void;
 }
 
 const StatusBadge: React.FC<{ status: BatteryStatus }> = ({ status }) => {
@@ -20,9 +22,27 @@ const StatusBadge: React.FC<{ status: BatteryStatus }> = ({ status }) => {
     return <span className={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest ${styles[status]}`}>{status}</span>;
 };
 
-export const TechTab: React.FC<TechTabProps> = ({ technologies, onAddTech, onRemoveTech, onAddBattery, onRemoveBattery }) => {
+// Pomocná komponenta pro tlačítko stavu
+const StatusButton: React.FC<{ 
+  active: boolean, 
+  colorClass: string, 
+  icon: React.ReactNode, 
+  label: string,
+  onClick: () => void 
+}> = ({ active, colorClass, icon, label, onClick }) => (
+  <button 
+    onClick={(e) => { e.stopPropagation(); onClick(); }}
+    title={label}
+    className={`p-1.5 rounded-lg transition-all flex-1 flex justify-center ${active ? colorClass + ' shadow-sm ring-1 ring-inset' : 'text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+  >
+    {React.cloneElement(icon as React.ReactElement<any>, { className: "w-4 h-4" })}
+  </button>
+);
+
+export const TechTab: React.FC<TechTabProps> = ({ technologies, onAddTech, onRemoveTech, onAddBattery, onRemoveBattery, onStatusChange }) => {
   return (
     <div className="space-y-6">
+      {/* ... Header sekce zůstává stejná ... */}
       <div className="flex justify-between items-center px-4">
           <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Seznam systémů</h3>
           <button onClick={onAddTech} className="text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center gap-1 hover:underline">
@@ -39,6 +59,7 @@ export const TechTab: React.FC<TechTabProps> = ({ technologies, onAddTech, onRem
 
       {technologies.map(tech => (
         <div key={tech.id} className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden">
+          {/* ... Header technologie zůstává stejný ... */}
           <div className="p-6 bg-slate-50/50 dark:bg-slate-800/20 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl"><Shield className="w-6 h-6" /></div>
@@ -59,29 +80,66 @@ export const TechTab: React.FC<TechTabProps> = ({ technologies, onAddTech, onRem
               </button>
             </div>
           </div>
+
           <div className="p-6">
             {tech.batteries.length === 0 ? (
               <p className="text-center py-4 text-gray-400 dark:text-slate-600 italic font-medium text-xs">Žádné evidované akumulátory.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {tech.batteries.map(battery => (
-                  <div key={battery.id} className="relative p-5 rounded-3xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-blue-200 dark:hover:border-blue-900 transition-all group">
-                    <button 
-                      onClick={() => onRemoveBattery(tech.id, battery.id)}
-                      className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center space-x-2">
-                        <BatteryIcon className="w-5 h-5 text-slate-400 dark:text-slate-600 group-hover:text-blue-500 transition-colors" />
-                        <span className="font-black text-gray-800 dark:text-slate-200">{battery.capacityAh}Ah / {battery.voltageV}V</span>
-                      </div>
-                      <StatusBadge status={battery.status} />
+                  <div key={battery.id} className="relative p-5 rounded-3xl border border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-blue-200 dark:hover:border-blue-900 transition-all group flex flex-col justify-between h-full">
+                    
+                    {/* Horní část karty */}
+                    <div>
+                        <button 
+                        onClick={() => onRemoveBattery(tech.id, battery.id)}
+                        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"
+                        >
+                        <X className="w-4 h-4" />
+                        </button>
+                        <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center space-x-2">
+                            <BatteryIcon className="w-5 h-5 text-slate-400 dark:text-slate-600 group-hover:text-blue-500 transition-colors" />
+                            <span className="font-black text-gray-800 dark:text-slate-200">{battery.capacityAh}Ah / {battery.voltageV}V</span>
+                        </div>
+                        <StatusBadge status={battery.status} />
+                        </div>
+                        <div className="space-y-1 mb-4">
+                        <p className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-600">Instalace: {new Date(battery.installDate).toLocaleDateString()}</p>
+                        <p className="text-[10px] font-black uppercase text-amber-500">Výměna: {new Date(battery.nextReplacementDate).toLocaleDateString()}</p>
+                        </div>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-600">Instalace: {new Date(battery.installDate).toLocaleDateString()}</p>
-                      <p className="text-[10px] font-black uppercase text-amber-500">Výměna: {new Date(battery.nextReplacementDate).toLocaleDateString()}</p>
+
+                    {/* NOVÉ: Ovládací tlačítka stavu */}
+                    <div className="flex gap-1 bg-gray-50 dark:bg-slate-800 p-1 rounded-xl mt-auto">
+                        <StatusButton 
+                          active={battery.status === BatteryStatus.HEALTHY}
+                          colorClass="bg-white dark:bg-slate-700 text-green-600 shadow-green-100 ring-green-100"
+                          icon={<CheckCircle />}
+                          label="V pořádku"
+                          onClick={() => onStatusChange(tech.id, battery.id, BatteryStatus.HEALTHY)}
+                        />
+                        <StatusButton 
+                          active={battery.status === BatteryStatus.WARNING}
+                          colorClass="bg-white dark:bg-slate-700 text-amber-500 shadow-amber-100 ring-amber-100"
+                          icon={<AlertTriangle />}
+                          label="Varování"
+                          onClick={() => onStatusChange(tech.id, battery.id, BatteryStatus.WARNING)}
+                        />
+                        <StatusButton 
+                          active={battery.status === BatteryStatus.CRITICAL}
+                          colorClass="bg-white dark:bg-slate-700 text-red-500 shadow-red-100 ring-red-100"
+                          icon={<AlertOctagon />}
+                          label="Kritický stav"
+                          onClick={() => onStatusChange(tech.id, battery.id, BatteryStatus.CRITICAL)}
+                        />
+                         <StatusButton 
+                          active={battery.status === BatteryStatus.REPLACED}
+                          colorClass="bg-white dark:bg-slate-700 text-blue-500 shadow-blue-100 ring-blue-100"
+                          icon={<RefreshCw />}
+                          label="Vyměněno"
+                          onClick={() => onStatusChange(tech.id, battery.id, BatteryStatus.REPLACED)}
+                        />
                     </div>
                   </div>
                 ))}

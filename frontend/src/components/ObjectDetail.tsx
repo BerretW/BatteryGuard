@@ -1,25 +1,23 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  Building2, ArrowLeft, MapPin, Plus, History, AlertTriangle, CheckCircle, 
-  Clock, Battery as BatteryIcon, Trash2, Calendar, BookOpen, MessageSquare, 
-  Edit, Save, ClipboardCheck, ChevronDown, X, Tag, Bell, Share2, Target, 
-  Phone, Mail, Users, FileText, Lock, Shield
+  ArrowLeft, MapPin, Plus, BookOpen, Edit, Shield, Calendar, ClipboardCheck, 
+  Users, Battery as BatteryIcon, Phone, Mail, FileText, Bell, Trash2, X
 } from 'lucide-react';
-import { BuildingObject, Technology, Battery, TechType, BatteryStatus, LogEntry, FormTemplate, ObjectGroup, RegularEvent, RecurrenceInterval, Contact } from '../types';
-import { dataStore } from '../services/dataStore';
+import { BuildingObject, BatteryStatus, Contact, RegularEvent, ObjectGroup } from '../types';
 
 interface ObjectDetailProps {
   objects: BuildingObject[];
   setObjects: (objects: BuildingObject[]) => void;
+  groups: ObjectGroup[]; // <--- Nová prop
 }
 
-const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects }) => {
+const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups }) => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'tech' | 'log' | 'events' | 'info'>('tech');
   
+  // Modals state
   const [isTechModalOpen, setTechModalOpen] = useState(false);
   const [isBatteryModalOpen, setBatteryModalOpen] = useState<{ techId: string } | null>(null);
   const [isLogModalOpen, setLogModalOpen] = useState(false);
@@ -28,13 +26,11 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects }) => {
   const [isContactModalOpen, setContactModalOpen] = useState(false);
   
   const [editingEvent, setEditingEvent] = useState<RegularEvent | null>(null);
-  const [groups, setGroups] = useState<ObjectGroup[]>([]);
 
+  // Nalezení objektu
   const object = objects.find(o => o.id === id);
 
-  useEffect(() => {
-    setGroups(dataStore.getGroups());
-  }, []);
+  // ZDE BYLA CHYBA: useEffect s dataStore.getGroups() byl odstraněn.
 
   if (!object) {
     return <div className="p-10 text-center dark:text-slate-400 font-bold">Objekt nebyl nalezen.</div>;
@@ -106,7 +102,7 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects }) => {
         </div>
       </div>
 
-      {/* Modern Tabs */}
+      {/* Tabs */}
       <div className="flex p-1.5 bg-gray-100 dark:bg-slate-900 rounded-[1.5rem] border border-gray-200 dark:border-slate-800 overflow-x-auto no-scrollbar">
         <TabButton active={activeTab === 'tech'} onClick={() => setActiveTab('tech')} icon={<Shield />} label="Technologie" />
         <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} icon={<Users />} label="Kontakty & Info" />
@@ -168,7 +164,7 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects }) => {
 
         {activeTab === 'info' && (
           <div className="space-y-6">
-            {/* Contacts Section */}
+            {/* Contacts */}
             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-gray-100 dark:border-slate-800 shadow-sm">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-black text-gray-800 dark:text-white flex items-center gap-2">
@@ -210,7 +206,7 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects }) => {
               </div>
             </div>
 
-            {/* Internal Notes Section */}
+            {/* Notes */}
             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-gray-100 dark:border-slate-800 shadow-sm">
                <h3 className="text-xl font-black text-gray-800 dark:text-white flex items-center gap-2 mb-4">
                   <FileText className="w-6 h-6 text-amber-500" /> Interní poznámky a kódy
@@ -394,3 +390,5 @@ const StatusBadge: React.FC<{ status: BatteryStatus }> = ({ status }) => {
 };
 
 export default ObjectDetail;
+
+48.97491253415053, 14.479586367990468

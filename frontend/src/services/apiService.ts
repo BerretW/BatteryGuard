@@ -1,36 +1,31 @@
-import { BuildingObject, ApiConfig, AppUser } from '../types';
-import { dataStore } from './dataStore';
+import { BuildingObject, ObjectGroup, FormTemplate, AppUser } from '../types';
 
 const TOKEN_KEY = 'bg_auth_token';
+const BASE_URL = '/api'; 
 
 export interface IApiService {
+  // Objekty
   getObjects(): Promise<BuildingObject[]>;
   saveObjects(objects: BuildingObject[]): Promise<void>;
+  
+  // Skupiny
+  getGroups(): Promise<ObjectGroup[]>;
+  saveGroups(groups: ObjectGroup[]): Promise<void>;
+
+  // Šablony (Settings)
+  getTemplates(): Promise<FormTemplate[]>;
+  saveTemplates(templates: FormTemplate[]): Promise<void>;
+
+  // Uživatelé (Admin)
+  getUsers(): Promise<AppUser[]>;
 }
 
-class MockApiService implements IApiService {
-  async getObjects(): Promise<BuildingObject[]> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return dataStore.getObjects();
-  }
-
-  async saveObjects(objects: BuildingObject[]): Promise<void> {
-    dataStore.saveObjects(objects);
-  }
-}
-
-class RemoteApiService implements IApiService {
-  private baseUrl: string;
-
-  constructor(baseUrl: string) {
-    // Odstraníme koncový slash, pokud tam je
-    this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  }
-
+class ApiService implements IApiService {
+  
   private getHeaders() {
     const token = localStorage.getItem(TOKEN_KEY);
-    // Odstraníme uvozovky, pokud je token uložen jako JSON string (běžná chyba)
-    const cleanToken = token ? token.replace(/"/g, '') : '';
+    // Odstraníme uvozovky, které se tam mohly dostat špatným uložením
+    const cleanToken = token ? token.replace(/^"(.*)"$/, '$1') : '';
     
     return {
       'Content-Type': 'application/json',
@@ -38,56 +33,63 @@ class RemoteApiService implements IApiService {
     };
   }
 
-  private async handleResponse(response: Response) {
-    if (response.status === 401) {
-      // Token vypršel nebo je neplatný -> odhlásit
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem('bg_current_user');
-      window.location.reload();
-      throw new Error('Unauthorized');
+  private async request(endpoint: string, method: string = 'GET', body?: any) {
+    const url = `${BASE_URL}${endpoint}`;
+    
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: this.getHeaders(),
+        body: body ? JSON.stringify(body) : undefined
+      });
+
+      // 401 = Token vypršel nebo je neplatný
+      if (response.status === 401) {
+        console.warn("Unauthorized - Session expired");
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem('bg_current_user');
+        window.location.reload(); 
+        throw new Error('Unauthorized');
+      }
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`API Error ${response.status}: ${text}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error(`Request failed: ${method} ${url}`, error);
+      throw error;
     }
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`API Error: ${response.status} - ${text}`);
-    }
-    return response.json();
   }
+
+  // --- Implementation ---
 
   async getObjects(): Promise<BuildingObject[]> {
-    const response = await fetch(`${this.baseUrl}/objects`, {
-      method: 'GET',
-      headers: this.getHeaders()
-    });
-    return this.handleResponse(response);
+    return this.request('/objects');
+  }
+  async saveObjects(objects: BuildingObject[]): Promise<void> {
+    await this.request('/objects', 'POST', objects);
   }
 
-  async saveObjects(objects: BuildingObject[]): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/objects`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(objects)
-    });
-    await this.handleResponse(response);
+  async getGroups(): Promise<ObjectGroup[]> {
+    return this.request('/groups');
+  }
+  async saveGroups(groups: ObjectGroup[]): Promise<void> {
+    await this.request('/groups', 'POST', groups);
+  }
+
+  async getTemplates(): Promise<FormTemplate[]> {
+    return this.request('/templates');
+  }
+  async saveTemplates(templates: FormTemplate[]): Promise<void> {
+    await this.request('/templates', 'POST', templates);
+  }
+
+  async getUsers(): Promise<AppUser[]> {
+    return this.request('/users');
   }
 }
 
-export const getApiService = (): IApiService => {
-  const configRaw = localStorage.getItem('api_config');
-  
-  let config: ApiConfig;
-
-  if (configRaw) {
-    config = JSON.parse(configRaw);
-  } else {
-    // VÝCHOZÍ NASTAVENÍ PRO PRODUKCI
-    config = { 
-      mode: 'REMOTE', 
-      baseUrl: '/api' // Relativní cesta - Nginx se postará o doménu
-    };
-  }
-  
-  if (config.mode === 'REMOTE') {
-    return new RemoteApiService(config.baseUrl || '/api');
-  }
-  return new MockApiService();
-};
+export const getApiService = (): IApiService => new ApiService();

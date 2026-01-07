@@ -22,7 +22,6 @@ import {
 import { BuildingObject, AppUser, ObjectGroup } from './types';
 
 // Importy služeb
-import { dataStore } from './services/dataStore';
 import { getApiService } from './services/apiService';
 import { authService } from './services/authService';
 
@@ -43,7 +42,6 @@ const App: React.FC = () => {
   const [groups, setGroups] = useState<ObjectGroup[]>([]);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [apiMode, setApiMode] = useState<'MOCK' | 'REMOTE'>('MOCK');
   
   // Dark mode logic
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -72,41 +70,26 @@ const App: React.FC = () => {
       return;
     }
 
-    // Načtení konfigurace API
-    const config = localStorage.getItem('api_config');
-    if (config) {
-      try {
-        setApiMode(JSON.parse(config).mode);
-      } catch (e) {
-        console.error("Chyba parsování configu", e);
-      }
-    }
-    
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        // Paralelní načtení objektů a skupin
-        // Poznámka: v reálném API by i skupiny měly jít přes api.getGroups(),
-        // zde pro zjednodušení kombinujeme API pro objekty a LocalStore pro skupiny,
-        // pokud nemáte implementovaný endpoint na skupiny v RemoteApiService.
+        // Načítáme objekty a skupiny paralelně z API
+        // apiService se stará o komunikaci s backendem /api/objects a /api/groups
         const [objData, groupData] = await Promise.all([
           api.getObjects(),
-          Promise.resolve(dataStore.getGroups())
+          api.getGroups()
         ]);
         setObjects(objData);
         setGroups(groupData);
       } catch (error) {
-        console.error("Chyba při načítání dat:", error);
-        // Fallback na lokální data při chybě API, aby aplikace nespadla
-        if (apiMode === 'REMOTE') {
-            alert("Nepodařilo se načíst data ze serveru. Zkontrolujte připojení.");
-        }
+        console.error("Chyba při načítání dat z API:", error);
+        // V produkci zde můžeme přidat toast notifikaci
       } finally {
         setIsLoading(false);
       }
     };
     fetchData();
-  }, [currentUser, apiMode]);
+  }, [currentUser]);
 
   const handleLogin = () => {
     setCurrentUser(authService.getCurrentUser());
@@ -118,20 +101,25 @@ const App: React.FC = () => {
   };
 
   const updateObjects = async (newObjects: BuildingObject[]) => {
+    // Optimistický update UI
     setObjects(newObjects);
     try {
       await api.saveObjects(newObjects);
     } catch (error) {
       console.error("Save error:", error);
-      alert("Chyba při ukládání na server. Data byla uložena pouze dočasně v prohlížeči.");
-      // Fallback save to local store just in case
-      dataStore.saveObjects(newObjects);
+      alert("Chyba při ukládání dat na server.");
+      // Zde by v ideálním případě měl být revert state (načtení původních dat)
     }
   };
 
-  const updateGroups = (newGroups: ObjectGroup[]) => {
+  const updateGroups = async (newGroups: ObjectGroup[]) => {
     setGroups(newGroups);
-    dataStore.saveGroups(newGroups);
+    try {
+      await api.saveGroups(newGroups);
+    } catch (error) {
+      console.error("Group save error:", error);
+      alert("Chyba při ukládání skupin na server.");
+    }
   };
 
   // 1. Stav: Nepřihlášený uživatel
@@ -161,7 +149,7 @@ const App: React.FC = () => {
     );
   }
 
-  // 3. Stav: Plně přihlášený uživatel -> Hlavní aplikace
+  // 3. Stav: Plně přihlášený a autorizovaný uživatel -> Hlavní aplikace
   return (
     <Router>
       <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
@@ -242,9 +230,6 @@ const App: React.FC = () => {
             <div className="flex-1 ml-3 lg:ml-0 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <h1 className="text-lg font-bold text-gray-800 dark:text-white truncate">BatteryGuard Pro</h1>
-                <div className={`hidden sm:flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${apiMode === 'REMOTE' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                  {apiMode === 'REMOTE' ? 'ONLINE' : 'MOCK MODE'}
-                </div>
               </div>
               
               <button 
@@ -261,20 +246,23 @@ const App: React.FC = () => {
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-full space-y-4">
                 <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-gray-500 dark:text-slate-400 font-medium">Načítání dat...</p>
+                <p className="text-gray-500 dark:text-slate-400 font-medium">Synchronizace dat se serverem...</p>
               </div>
             ) : (
               <Routes>
                 <Route path="/" element={<Dashboard objects={objects} />} />
-                <Route path="/objects" element={<ObjectList objects={objects} setObjects={updateObjects} />} />
+                
+                {/* Předáváme "groups" jako props, aby komponenty nemusely volat lokální store */}
+                <Route path="/objects" element={<ObjectList objects={objects} setObjects={updateObjects} groups={groups} />} />
+                <Route path="/object/:id" element={<ObjectDetail objects={objects} setObjects={updateObjects} groups={groups} />} />
+                
                 <Route path="/groups" element={<GroupManagement groups={groups} setGroups={updateGroups} objects={objects} />} />
                 <Route path="/map" element={<MapView objects={objects} />} />
                 <Route path="/calendar" element={<CalendarView objects={objects} />} />
-                <Route path="/object/:id" element={<ObjectDetail objects={objects} setObjects={updateObjects} />} />
                 <Route path="/maintenance" element={<MaintenancePlanner objects={objects} setObjects={updateObjects} />} />
                 <Route path="/settings" element={<Settings objects={objects} />} />
                 
-                {/* Admin only route */}
+                {/* Admin only route - Správa uživatelů */}
                 <Route path="/users" element={
                    currentUser.role === 'ADMIN' ? <UserManagement /> : <Navigate to="/" />
                 } />
@@ -290,23 +278,21 @@ const App: React.FC = () => {
 };
 
 // --- Pomocná komponenta pro User Management (Admin) ---
-// Poznámka: V reálné aplikaci by toto mělo být v samostatném souboru components/UserManagement.tsx
+// V produkci by měla být v samostatném souboru
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(false);
   const current = authService.getCurrentUser();
 
-  // Načtení uživatelů při mountu
+  // Načtení uživatelů při mountu (ASYNC z API)
   useEffect(() => {
     const fetchUsers = async () => {
-        // Pokud jsme v REMOTE módu, fetchovali bychom z API
-        // Zde zatím používáme helper z authService, který v MOCK vrací localstorage
-        // a v REMOTE (pokud by byl implementován) vrací API data.
-        // Pro jednoduchost zde ponecháme synchronní volání, ale v budoucnu async.
-        setUsers(authService.getUsers());
-        
-        // Pokud je potřeba fetchovat z API endpointu:
-        // const apiUsers = await api.getUsers(); setUsers(apiUsers);
+        try {
+            const apiUsers = await authService.getUsers();
+            setUsers(apiUsers);
+        } catch (e) {
+            console.error("Failed to load users", e);
+        }
     };
     fetchUsers();
   }, []);
@@ -315,16 +301,13 @@ const UserManagement: React.FC = () => {
     return <div className="p-10 text-center text-red-500 font-bold">Nemáte oprávnění k této sekci.</div>;
   }
 
-  const toggleAuth = async (userId: string, isAuth: boolean, role: 'ADMIN' | 'TECHNICIAN') => {
+  const toggleAuth = async (userId: string, isAuth: boolean, role: string) => {
     setLoading(true);
     try {
         await authService.authorizeUser(userId, role, isAuth);
         // Refresh users
-        setUsers(authService.getUsers());
-        
-        // Pokud jsme v REMOTE módu, je nutné znovu načíst seznam, protože authService.getUsers()
-        // v aktuální implementaci může vracet jen cached data.
-        // Pro remote bychom zavolali API znovu.
+        const updatedUsers = await authService.getUsers();
+        setUsers(updatedUsers);
     } catch (e) {
         alert("Chyba při změně oprávnění");
     } finally {
@@ -355,8 +338,8 @@ const UserManagement: React.FC = () => {
                 <td className="px-6 py-4 capitalize text-gray-600 dark:text-slate-400">{u.role}</td>
                 <td className="px-6 py-4">
                     {u.isAuthorized 
-                        ? <span className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-bold">Aktivní</span> 
-                        : <span className="text-amber-600 bg-amber-50 px-2 py-1 rounded text-xs font-bold">Čeká</span>
+                        ? <span className="text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded text-xs font-bold">Aktivní</span> 
+                        : <span className="text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded text-xs font-bold">Čeká</span>
                     }
                 </td>
                 <td className="px-6 py-4">
@@ -374,7 +357,7 @@ const UserManagement: React.FC = () => {
             ))}
             {users.length === 0 && (
                 <tr>
-                    <td colSpan={4} className="p-6 text-center text-gray-500">Žádní uživatelé</td>
+                    <td colSpan={4} className="p-6 text-center text-gray-500">Žádní uživatelé nenalezeni</td>
                 </tr>
             )}
           </tbody>

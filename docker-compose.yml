@@ -18,12 +18,14 @@ services:
     restart: unless-stopped
     environment:
       - MONGO_URL=mongodb://mongo:27017
+      
       - SECRET_KEY=${SECRET_KEY:-vas_tajny_klic_pro_jwt_tokeny_zmente_v_produkci}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@appartus.cz}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-zmente_tohle_heslo}
       - ALLOWED_ORIGINS=http://battery.appartus.cz,https://battery.appartus.cz,http://localhost,http://localhost:3000,http://prox2.appartus.cz
       # GOOGLE CONFIG PRO BACKEND (pro ověření tokenu)
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-vase_google_client_id.apps.googleusercontent.com}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET} # (není povinné, ale doporučené)
     depends_on:
       - mongo
     networks:

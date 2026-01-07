@@ -1,26 +1,22 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-// Added X to the lucide-react imports
 import { Building2, Search, Plus, MapPin, ChevronRight, Filter, Users, FileText, X } from 'lucide-react';
 import { BuildingObject, ObjectGroup } from '../types';
-import { dataStore } from '../services/dataStore';
 
 interface ObjectListProps {
   objects: BuildingObject[];
   setObjects: (objects: BuildingObject[]) => void;
+  groups: ObjectGroup[]; // <--- Nová prop
 }
 
-const ObjectList: React.FC<ObjectListProps> = ({ objects, setObjects }) => {
+const ObjectList: React.FC<ObjectListProps> = ({ objects, setObjects, groups }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
-  const [groups, setGroups] = useState<ObjectGroup[]>([]);
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    setGroups(dataStore.getGroups());
-  }, []);
+  // ZDE BYLA CHYBA: useEffect s dataStore.getGroups() byl odstraněn.
+  // Používáme "groups" přímo z props.
 
   const filteredObjects = objects.filter(obj => {
     const matchesSearch = obj.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -46,6 +42,7 @@ const ObjectList: React.FC<ObjectListProps> = ({ objects, setObjects }) => {
       scheduledEvents: [],
       contacts: []
     };
+    // Zde voláme funkci z App.tsx, která zavolá API
     setObjects([...objects, newObj]);
     setAddModalOpen(false);
   };

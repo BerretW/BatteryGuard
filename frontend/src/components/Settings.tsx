@@ -1,11 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
-  Database, Cloud, Wifi, WifiOff, Save,
-  ClipboardList, Plus, Trash2, Edit2, Settings2
+  Database, Save, ClipboardList, Plus, Trash2, Edit2, Settings2, Check, X, AlertCircle 
 } from 'lucide-react';
-import { ApiConfig, ApiMode, BuildingObject, FormTemplate, FormFieldDefinition } from '../types';
-import { dataStore } from '../services/dataStore';
+import { BuildingObject, FormTemplate, FormFieldDefinition } from '../types';
+import { getApiService } from '../services/apiService';
 import { authService } from '../services/authService';
 
 interface SettingsProps {
@@ -13,32 +11,48 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ objects }) => {
-  const [config, setConfig] = useState<ApiConfig>({ mode: 'MOCK', baseUrl: '' });
-  const [isSaved, setIsSaved] = useState(false);
-  
-  // Templates state
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<FormTemplate | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaved, setIsSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  const api = getApiService();
   const currentUser = authService.getCurrentUser();
 
+  // Načtení šablon při startu
   useEffect(() => {
-    const savedConfig = localStorage.getItem('api_config');
-    if (savedConfig) setConfig(JSON.parse(savedConfig));
-    setTemplates(dataStore.getTemplates());
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        const data = await api.getTemplates();
+        setTemplates(data);
+      } catch (err) {
+        console.error("Chyba při načítání šablon:", err);
+        setError("Nepodařilo se načíst nastavení.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
-  const handleSaveConfig = () => {
-    localStorage.setItem('api_config', JSON.stringify(config));
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
-    window.location.reload();
+  const saveTemplates = async (newTemplates: FormTemplate[]) => {
+    try {
+      setTemplates(newTemplates);
+      await api.saveTemplates(newTemplates);
+      
+      // Úspěšné uložení
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 3000);
+      setEditingTemplate(null);
+    } catch (err) {
+      console.error("Chyba při ukládání:", err);
+      alert("Nepodařilo se uložit změny.");
+    }
   };
 
-  const saveTemplates = (newTemplates: FormTemplate[]) => {
-    setTemplates(newTemplates);
-    dataStore.saveTemplates(newTemplates);
-  };
+  // --- Logika pro úpravu polí v modálním okně ---
 
   const addFieldToTemplate = () => {
     if (!editingTemplate) return;
@@ -64,142 +78,178 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
 
   const removeField = (fieldId: string) => {
     if (!editingTemplate) return;
+    if (!confirm("Opravdu odstranit toto pole?")) return;
+    
     setEditingTemplate({
       ...editingTemplate,
       fields: editingTemplate.fields.filter(f => f.id !== fieldId)
     });
   };
 
+  if (isLoading) {
+    return <div className="p-10 text-center text-gray-500">Načítám nastavení...</div>;
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-20">
-      {/* API Config Section */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <div className="flex items-center space-x-3 mb-6">
-          <Database className="w-6 h-6 text-blue-600" />
-          <h2 className="text-xl font-bold">Zdroj dat a API</h2>
+      
+      {/* Hlavička */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Nastavení systému</h2>
+          <p className="text-gray-500 dark:text-slate-400">Konfigurace formulářů a šablon.</p>
         </div>
-
-        <div className="space-y-6">
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-            <div className="flex items-center space-x-3">
-              {config.mode === 'MOCK' ? <WifiOff className="text-amber-500" /> : <Wifi className="text-green-500" />}
-              <div>
-                <p className="font-semibold">{config.mode === 'MOCK' ? 'Lokální režim (Mock)' : 'Produkční režim (API)'}</p>
-                <p className="text-xs text-gray-500">Určuje, kam se ukládají data objektů.</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setConfig({ ...config, mode: config.mode === 'MOCK' ? 'REMOTE' : 'MOCK' })}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${config.mode === 'REMOTE' ? 'bg-blue-600' : 'bg-gray-300'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${config.mode === 'REMOTE' ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
+        {isSaved && (
+          <div className="flex items-center gap-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-2 rounded-xl animate-in fade-in">
+            <Check className="w-5 h-5" />
+            <span className="font-bold text-sm">Uloženo</span>
           </div>
-
-          <button 
-            onClick={handleSaveConfig}
-            className={`w-full py-3 rounded-xl font-bold flex items-center justify-center space-x-2 transition ${isSaved ? 'bg-green-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100'}`}
-          >
-            <Save className="w-5 h-5" />
-            <span>{isSaved ? 'Uloženo!' : 'Uložit konfiguraci'}</span>
-          </button>
-        </div>
+        )}
       </div>
 
-      {/* Template Management (Admin Only) */}
-      {currentUser?.role === 'ADMIN' && (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 text-red-600 p-4 rounded-xl flex items-center gap-3">
+          <AlertCircle className="w-5 h-5" />
+          {error}
+        </div>
+      )}
+
+      {/* Pouze Admin může spravovat šablony */}
+      {currentUser?.role === 'ADMIN' ? (
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-800">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
-              <ClipboardList className="w-6 h-6 text-indigo-600" />
-              <h2 className="text-xl font-bold">Správa šablon deníku</h2>
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl text-indigo-600 dark:text-indigo-400">
+                <ClipboardList className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800 dark:text-white">Šablony deníku</h3>
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             {templates.map(tpl => (
-              <div key={tpl.id} className="flex items-center justify-between p-4 border rounded-xl hover:bg-gray-50 transition group">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+              <div key={tpl.id} className="flex items-center justify-between p-5 border border-gray-100 dark:border-slate-800 rounded-2xl hover:bg-gray-50 dark:hover:bg-slate-800/50 transition group">
+                <div className="flex items-center space-x-4">
+                  <div className="p-2 bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 rounded-xl">
                     <Settings2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="font-bold text-gray-800">{tpl.name}</p>
-                    <p className="text-xs text-gray-500">{tpl.fields.length} definovaných polí</p>
+                    <p className="font-bold text-gray-800 dark:text-white text-lg">{tpl.name}</p>
+                    <p className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">
+                      {tpl.fields.length} polí
+                    </p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setEditingTemplate(tpl)}
-                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                  className="px-4 py-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 rounded-xl font-bold text-sm hover:text-blue-600 hover:border-blue-200 transition shadow-sm"
                 >
-                  <Edit2 className="w-5 h-5" />
+                  Upravit
                 </button>
               </div>
             ))}
           </div>
         </div>
+      ) : (
+        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2rem] text-center border border-gray-100 dark:border-slate-800">
+          <Settings2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-gray-600 dark:text-slate-400">Přístup odepřen</h3>
+          <p className="text-gray-400 dark:text-slate-500">Pouze administrátor může měnit nastavení šablon.</p>
+        </div>
       )}
 
-      {/* Template Edit Modal */}
+      {/* MODAL PRO EDITACI ŠABLONY */}
       {editingTemplate && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black bg-opacity-60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 bg-gray-50 border-b flex justify-between items-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Header Modalu */}
+            <div className="px-8 py-6 bg-slate-50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center">
               <div>
-                <h3 className="text-xl font-bold">Upravit šablonu</h3>
+                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-1">Název šablony</label>
                 <input 
-                  className="bg-transparent font-bold text-blue-600 focus:outline-none"
+                  className="bg-transparent font-black text-2xl text-blue-600 focus:outline-none placeholder-blue-300 w-full"
                   value={editingTemplate.name}
                   onChange={(e) => setEditingTemplate({...editingTemplate, name: e.target.value})}
                 />
               </div>
-              <button onClick={() => setEditingTemplate(null)} className="p-2 hover:bg-gray-200 rounded-full transition">&times;</button>
+              <button onClick={() => setEditingTemplate(null)} className="p-2 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-full transition text-slate-400">
+                <X className="w-6 h-6" />
+              </button>
             </div>
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+
+            {/* Body Modalu */}
+            <div className="p-8 overflow-y-auto flex-1 space-y-6 bg-white dark:bg-slate-900">
               <div className="flex justify-between items-center">
-                <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Pole formuláře</h4>
+                <h4 className="text-sm font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest">Definice polí</h4>
                 <button 
                   onClick={addFieldToTemplate}
-                  className="text-sm text-blue-600 font-bold flex items-center hover:underline"
+                  className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold px-3 py-1.5 rounded-lg flex items-center hover:bg-blue-100 transition"
                 >
                   <Plus className="w-4 h-4 mr-1" /> Přidat pole
                 </button>
               </div>
               
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {editingTemplate.fields.map((field) => (
-                  <div key={field.id} className="flex flex-col md:flex-row gap-3 p-4 border rounded-2xl bg-gray-50/50">
-                    <div className="flex-1 space-y-2">
-                      <input 
-                        className="w-full text-sm font-bold bg-transparent border-b border-gray-200 focus:border-blue-500 outline-none"
-                        value={field.label}
-                        onChange={(e) => updateField(field.id, { label: e.target.value })}
-                        placeholder="Název pole"
-                      />
+                  <div key={field.id} className="flex flex-col md:flex-row gap-4 p-5 border border-gray-100 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-800/30 group hover:border-blue-200 dark:hover:border-blue-900 transition">
+                    <div className="flex-1 space-y-3">
                       <div className="flex gap-4">
-                        <select 
-                          className="text-xs bg-white border rounded px-2 py-1"
-                          value={field.type}
-                          onChange={(e) => updateField(field.id, { type: e.target.value as any })}
-                        >
-                          <option value="text">Krátký text</option>
-                          <option value="textarea">Dlouhý text</option>
-                          <option value="number">Číslo</option>
-                          <option value="date">Datum</option>
-                        </select>
-                        <label className="flex items-center text-xs text-gray-500">
+                        <div className="flex-1">
+                          <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Název pole</label>
+                          <input 
+                            className="w-full text-sm font-bold bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none dark:text-white"
+                            value={field.label}
+                            onChange={(e) => updateField(field.id, { label: e.target.value })}
+                            placeholder="Např. Teplota, Stav..."
+                          />
+                        </div>
+                        <div className="w-1/3">
+                          <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Typ</label>
+                          <select 
+                            className="w-full text-sm font-bold bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 outline-none dark:text-white"
+                            value={field.type}
+                            onChange={(e) => updateField(field.id, { type: e.target.value as any })}
+                          >
+                            <option value="text">Text</option>
+                            <option value="textarea">Dlouhý text</option>
+                            <option value="number">Číslo</option>
+                            <option value="date">Datum</option>
+                            <option value="select">Výběr (Select)</option>
+                          </select>
+                        </div>
+                      </div>
+                      
+                      {/* Možnosti pro Select */}
+                      {field.type === 'select' && (
+                        <div>
+                           <label className="block text-[10px] font-bold uppercase text-gray-400 mb-1">Možnosti (oddělené čárkou)</label>
+                           <input 
+                              className="w-full text-xs font-medium bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-2 outline-none dark:text-white"
+                              value={field.options?.join(', ') || ''}
+                              onChange={(e) => updateField(field.id, { options: e.target.value.split(',').map(s => s.trim()) })}
+                              placeholder="Možnost A, Možnost B, ..."
+                           />
+                        </div>
+                      )}
+
+                      <div className="flex items-center">
+                        <label className="flex items-center text-xs font-bold text-gray-600 dark:text-slate-400 cursor-pointer select-none">
                           <input 
                             type="checkbox" 
-                            className="mr-1"
+                            className="mr-2 w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                             checked={field.required}
                             onChange={(e) => updateField(field.id, { required: e.target.checked })}
-                          /> Povinné
+                          /> 
+                          Povinné pole
                         </label>
                       </div>
                     </div>
+                    
                     <button 
                       onClick={() => removeField(field.id)}
-                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition self-center"
+                      className="self-center p-3 text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition"
+                      title="Odstranit pole"
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
@@ -207,21 +257,23 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
                 ))}
               </div>
             </div>
-            <div className="p-6 bg-gray-50 border-t flex gap-3">
+
+            {/* Footer Modalu */}
+            <div className="p-6 bg-slate-50 dark:bg-slate-800/50 border-t border-gray-100 dark:border-slate-800 flex gap-4">
               <button 
                 onClick={() => setEditingTemplate(null)}
-                className="flex-1 py-3 border border-gray-200 rounded-xl hover:bg-white transition font-bold"
+                className="flex-1 py-4 border-2 border-gray-200 dark:border-slate-700 rounded-2xl text-gray-600 dark:text-slate-300 font-bold hover:bg-white dark:hover:bg-slate-800 transition"
               >
                 Zrušit
               </button>
               <button 
                 onClick={() => {
-                  saveTemplates(templates.map(t => t.id === editingTemplate.id ? editingTemplate : t));
-                  setEditingTemplate(null);
+                  const updatedTemplates = templates.map(t => t.id === editingTemplate.id ? editingTemplate : t);
+                  saveTemplates(updatedTemplates);
                 }}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition font-bold shadow-lg shadow-blue-100"
+                className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition"
               >
-                Uložit šablonu
+                Uložit změny
               </button>
             </div>
           </div>

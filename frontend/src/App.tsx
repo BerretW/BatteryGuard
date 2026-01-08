@@ -261,7 +261,16 @@ const App: React.FC = () => {
                 <Route path="/groups" element={<GroupManagement groups={groups} setGroups={updateGroups} objects={objects} />} />
                 <Route path="/map" element={<MapView objects={objects} />} />
                 <Route path="/calendar" element={<CalendarView objects={objects} />} />
-                <Route path="/maintenance" element={<MaintenancePlanner objects={objects} setObjects={updateLocalObjects} />} />
+                <Route 
+  path="/maintenance" 
+  element={
+    <MaintenancePlanner 
+      objects={objects} 
+      setObjects={updateLocalObjects} 
+      groups={groups} // <--- TOTO JE NUTNÉ PŘIDAT
+    />
+  } 
+/>
                 <Route path="/settings" element={<Settings objects={objects} />} />
                 
                 <Route path="/users" element={

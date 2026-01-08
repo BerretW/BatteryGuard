@@ -49,6 +49,8 @@ class ObjectGroupModel(BaseModel):
     id: str
     name: str
     color: Optional[str] = None
+    defaultBatteryLifeMonths: Optional[int] = 24  # Výchozí životnost: 2 roky
+    notificationLeadTimeWeeks: Optional[int] = 4  # Výchozí upozornění: 4 týdny předem
 
 class FormTemplateModel(BaseModel):
     id: str

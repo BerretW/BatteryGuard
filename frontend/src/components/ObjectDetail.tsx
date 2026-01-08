@@ -241,7 +241,7 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
     }
   };
 
-  const handleBatteryStatusChange = async (techId: string, batteryId: string, newStatus: BatteryStatus) => {
+const handleBatteryStatusChange = async (techId: string, batteryId: string, newStatus: BatteryStatus) => {
     const tech = object.technologies.find(t => t.id === techId);
     const battery = tech?.batteries.find(b => b.id === batteryId);
     
@@ -252,26 +252,31 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
         let extraData: any = {};
         let logNote = 'Automatický záznam z detailu objektu';
 
-        // Logika pro výměnu - automatický posun datumu
+        // LOGIKA PRO VÝMĚNU
         if (newStatus === BatteryStatus.REPLACED) {
             const now = new Date();
             const installDateStr = now.toISOString().split('T')[0];
+            
+            // Získání nastavení ze skupiny objektu
+            const group = groups.find(g => g.id === object.groupId);
+            const lifeMonths = group?.defaultBatteryLifeMonths || 24; // Default 24 měsíců
+
             const nextDate = new Date(now);
-            nextDate.setFullYear(nextDate.getFullYear() + 2); // Default 2 roky
+            nextDate.setMonth(nextDate.getMonth() + lifeMonths);
             const nextReplaceStr = nextDate.toISOString().split('T')[0];
 
             extraData = {
                 installDate: installDateStr,
                 nextReplacementDate: nextReplaceStr
             };
-            logNote += `. Aktualizováno datum instalace (${installDateStr}).`;
+            logNote += `. Aktualizováno datum instalace (${installDateStr}). Další výměna nastavena za ${lifeMonths} měsíců (${nextReplaceStr}).`;
         }
 
         // 1. Update statusu baterie (Atomicky)
         await api.updateBatteryStatus(object.id, techId, batteryId, newStatus, extraData);
 
         // 2. Vytvoření logu (Atomicky)
-        const newLogEntry: LogEntry = {
+const newLogEntry: LogEntry = {
             id: Math.random().toString(36).substr(2, 9),
             templateId: 'system-auto-status',
             templateName: 'Rychlá změna stavu',
@@ -286,9 +291,8 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
             }
         };
         await api.addLogEntry(object.id, newLogEntry);
-
-        // 3. Refresh
         await reloadObject();
+
 
     } catch (e) {
         console.error("Status change error", e);

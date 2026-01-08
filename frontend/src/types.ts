@@ -186,3 +186,11 @@ export interface FileAttachment {
   uploadedAt: string;
   uploadedBy: string;
 }
+
+export interface ObjectGroup {
+  id: string;
+  name: string;
+  color?: string;
+  defaultBatteryLifeMonths?: number; // Životnost v měsících (např. 24, 36)
+  notificationLeadTimeWeeks?: number; // Upozornit X týdnů předem
+}

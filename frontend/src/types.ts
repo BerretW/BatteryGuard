@@ -133,3 +133,13 @@ export interface PendingIssue {
   createdBy: string;
   status: 'OPEN' | 'RESOLVED';
 }
+
+export interface LogEntry {
+  id: string;
+  templateId: string;
+  templateName: string;
+  date: string;
+  author: string;
+  data: Record<string, string>;
+  images?: string[]; // PŘIDÁNO
+}

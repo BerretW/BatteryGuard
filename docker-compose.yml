@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
     environment:
       - MONGO_URL=mongodb://mongo:27017
-      
+      - UPLOAD_DIR=/app/uploads  # Přidáme proměnnou
       - SECRET_KEY=${SECRET_KEY:-vas_tajny_klic_pro_jwt_tokeny_zmente_v_produkci}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@appartus.cz}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-zmente_tohle_heslo}
@@ -26,6 +26,8 @@ services:
       # GOOGLE CONFIG PRO BACKEND (pro ověření tokenu)
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-vase_google_client_id.apps.googleusercontent.com}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET} # (není povinné, ale doporučené)
+    volumes:
+      - ./backend/uploads:/app/uploads # Mapování složky pro obrázky
     depends_on:
       - mongo
     networks:

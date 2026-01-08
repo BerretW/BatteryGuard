@@ -10,6 +10,11 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr
 
+import shutil
+import uuid
+from fastapi.staticfiles import StaticFiles
+from fastapi import UploadFile, File
+
 # --- KONFIGURACE ---
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo:27017")
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey_change_me_in_prod")
@@ -24,6 +29,10 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 1 týden
 
 app = FastAPI(title="BatteryGuard API")
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
@@ -197,7 +206,22 @@ async def google_login(req: dict = Body(...)):
     return {"token": create_access_token(data={"sub": user["email"]}), "user": fix_mongo_id(user)}
 
 # --- DATA ENDPOINTS ---
-
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    try:
+        # Vygenerujeme unikátní název souboru
+        file_extension = os.path.splitext(file.filename)[1]
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(UPLOAD_DIR, unique_filename)
+        
+        # Uložíme soubor
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # Vrátíme relativní URL (frontend si přidá /api)
+        return {"url": f"/uploads/{unique_filename}", "filename": file.filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 # 1. Objekty
 @app.get("/objects")
 async def get_objects(user: dict = Depends(get_current_user)):

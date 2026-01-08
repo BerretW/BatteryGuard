@@ -16,6 +16,8 @@ export interface IApiService {
   getTemplates(): Promise<FormTemplate[]>;
   saveTemplates(templates: FormTemplate[]): Promise<void>;
 
+  uploadFile(file: File): Promise<{ url: string, filename: string }>;
+
   // Uživatelé (Admin)
   getUsers(): Promise<AppUser[]>;
 }
@@ -65,6 +67,27 @@ class ApiService implements IApiService {
   }
 
   // --- Implementation ---
+
+  async uploadFile(file: File): Promise<{ url: string, filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Zde nepoužíváme standardní this.request, protože potřebujeme poslat FormData bez Content-Type: application/json
+    const token = localStorage.getItem('bg_auth_token'); // Použijte vaši konstantu TOKEN_KEY
+    const cleanToken = token ? token.replace(/^"(.*)"$/, '$1') : '';
+
+    const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${cleanToken}`
+            // Content-Type se nastaví automaticky prohlížečem včetně boundary
+        },
+        body: formData
+    });
+
+    if (!response.ok) throw new Error('Upload failed');
+    return response.json();
+}
 
   async getObjects(): Promise<BuildingObject[]> {
     return this.request('/objects');

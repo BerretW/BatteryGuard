@@ -78,3 +78,12 @@ class UserDB(BaseModel):
     isAuthorized: bool
     hashed_password: str
     createdAt: str
+
+class LogEntry(BaseModel):
+    id: str
+    templateId: str
+    templateName: str
+    date: str
+    author: str
+    data: Dict[str, Any]
+    images: List[str] = [] # PŘIDÁNO: Seznam URL obrázků

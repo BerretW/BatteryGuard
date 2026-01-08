@@ -7,6 +7,8 @@ import {
 } from '../types';
 import { getApiService } from '../services/apiService';
 import { authService } from '../services/authService';
+import { TasksTab } from './object-detail/TasksTab'; // IMPORT
+import { ObjectTask } from '../types';
 
 // Import sub-components
 import { ObjectHeader } from './object-detail/ObjectHeader';
@@ -28,10 +30,7 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   const navigate = useNavigate();
   const api = getApiService();
   const currentUser = authService.getCurrentUser();
-
-  // State - PŘIDÁNA 'files' do activeTab
-  const [activeTab, setActiveTab] = useState<'tech' | 'log' | 'events' | 'info' | 'files'>('tech');
-  
+ 
   // Modals state
   const [isTechModalOpen, setTechModalOpen] = useState(false);
   const [isBatteryModalOpen, setBatteryModalOpen] = useState<{ techId: string } | null>(null);
@@ -47,7 +46,11 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   const [editingEvent, setEditingEvent] = useState<RegularEvent | null>(null);
 
   const object = objects.find(o => o.id === id);
-
+  const [activeTab, setActiveTab] = useState<'tech' | 'log' | 'events' | 'info' | 'files' | 'tasks'>('tech');
+  
+  // NOVÝ STATE
+  const [isTaskModalOpen, setTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<ObjectTask | null>(null);
   // Load templates on mount
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -82,7 +85,40 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
     const g = groups.find(g => g.id === groupId);
     return g || { name: 'Bez skupiny', color: '#94a3b8' };
   };
+const handleSaveTask = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const taskData: ObjectTask = {
+        id: editingTask ? editingTask.id : Math.random().toString(36).substr(2, 9),
+        description: fd.get('description') as string,
+        deadline: fd.get('deadline') as string,
+        priority: fd.get('priority') as any,
+        status: fd.get('status') as any,
+        note: fd.get('note') as string,
+        createdAt: editingTask ? editingTask.createdAt : new Date().toISOString(),
+        createdBy: editingTask ? editingTask.createdBy : (currentUser?.name || 'Neznámý')
+    };
 
+    let updatedTasks = object.tasks || [];
+    if (editingTask) {
+        updatedTasks = updatedTasks.map(t => t.id === editingTask.id ? taskData : t);
+    } else {
+        updatedTasks = [...updatedTasks, taskData];
+    }
+    
+    updateCurrentObject({ ...object, tasks: updatedTasks });
+    setTaskModalOpen(false);
+    setEditingTask(null);
+  };
+
+  const removeTask = (id: string) => {
+    updateCurrentObject({ ...object, tasks: (object.tasks || []).filter(t => t.id !== id) });
+  };
+  
+  const quickTaskStatusChange = (task: ObjectTask, newStatus: any) => {
+     const updatedTasks = (object.tasks || []).map(t => t.id === task.id ? { ...t, status: newStatus } : t);
+     updateCurrentObject({ ...object, tasks: updatedTasks });
+  };
   // --- Files / Kartotéka Handlers (NOVÉ) ---
   const addFileToObject = (file: FileAttachment) => {
     const currentFiles = object.files || [];
@@ -349,6 +385,7 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
         
         <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} icon={<Users />} label="Kontakty & Info" />
         <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} icon={<Calendar />} label="Plánované" />
+     <TabButton active={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')} icon={<AlertCircle />} label="Úkolníček" /> 
         <TabButton active={activeTab === 'log'} onClick={() => setActiveTab('log')} icon={<ClipboardCheck />} label="Deník" />
       </div>
 
@@ -398,6 +435,15 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
             templates={templates}
           />
         )}
+        {activeTab === 'tasks' && (
+      <TasksTab 
+          tasks={object.tasks || []}
+          onAddTask={() => { setEditingTask(null); setTaskModalOpen(true); }}
+          onEditTask={(t) => { setEditingTask(t); setTaskModalOpen(true); }}
+          onRemoveTask={removeTask}
+          onQuickStatusChange={quickTaskStatusChange}
+      />
+  )}
       </div>
 
       <ObjectModals 
@@ -438,6 +484,10 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
         logFormData={logFormData}
         setLogFormData={setLogFormData}
         onAddLogEntry={handleAddLogEntry}
+              isTaskModalOpen={isTaskModalOpen}
+      setTaskModalOpen={setTaskModalOpen}
+      editingTask={editingTask}
+      onSaveTask={handleSaveTask}
       />
     </div>
   );

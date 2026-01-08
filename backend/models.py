@@ -42,6 +42,19 @@ class LogEntry(BaseModel):
     date: str
     author: str
     data: Dict[str, Any]
+    images: List[str] = [] # PŘIDÁNO: Seznam URL obrázků
+
+
+
+class ObjectTask(BaseModel):
+    id: str
+    description: str      # Úkol
+    deadline: str         # Termín
+    priority: str         # LOW, MEDIUM, HIGH
+    status: str           # OPEN, IN_PROGRESS, DONE
+    note: Optional[str] = None
+    createdAt: str
+    createdBy: str
 
 class RegularEvent(BaseModel):
     id: str
@@ -60,6 +73,7 @@ class BuildingObject(BaseModel):
     address: str
     description: str
     internalNotes: Optional[str] = None
+    tasks: List[ObjectTask] = [] 
     contacts: List[Contact] = []
     technologies: List[Technology] = []
     logEntries: List[LogEntry] = []
@@ -68,6 +82,7 @@ class BuildingObject(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     files: List[FileAttachment] = [] 
+    pendingIssues: List[Any] = [] # Pro zpětnou kompatibilitu pendingIssues
 
 class ObjectGroup(BaseModel):
     id: str
@@ -86,13 +101,4 @@ class UserDB(BaseModel):
     isAuthorized: bool
     hashed_password: str
     createdAt: str
-
-class LogEntry(BaseModel):
-    id: str
-    templateId: str
-    templateName: str
-    date: str
-    author: str
-    data: Dict[str, Any]
-    images: List[str] = [] # PŘIDÁNO: Seznam URL obrázků
 

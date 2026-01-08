@@ -24,6 +24,29 @@ export enum RecurrenceInterval {
   QUADRENNIALLY = 'Každé 4 roky'
 }
 
+export enum TaskPriority {
+  LOW = 'Nízká',
+  MEDIUM = 'Střední',
+  HIGH = 'Vysoká'
+}
+
+export enum TaskStatus {
+  OPEN = 'Založeno',
+  IN_PROGRESS = 'Řeší se',
+  DONE = 'Vyřešeno'
+}
+
+export interface ObjectTask {
+  id: string;
+  description: string;
+  deadline: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  status: 'OPEN' | 'IN_PROGRESS' | 'DONE';
+  note?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
 export interface RegularEvent {
   id: string;
   title: string;
@@ -110,6 +133,7 @@ export interface BuildingObject {
   lat?: number;
   lng?: number;
   files: FileAttachment[];
+  tasks: ObjectTask[]; // <--- PŘIDAT TOTO POLE
 }
 
 export interface AppUser {

@@ -7,6 +7,9 @@ import {
   TechType,
   RegularEvent,
   FormTemplate,
+  ObjectTask,       // <--- NOVÉ
+  TaskPriority,     // <--- NOVÉ
+  TaskStatus        // <--- NOVÉ
 } from "../../types";
 import { getApiService } from "../../services/apiService";
 
@@ -36,29 +39,41 @@ const Modal: React.FC<{
 
 // Props interface containing state and handlers
 interface ObjectModalsProps {
+  // --- TECH ---
   isTechModalOpen: boolean;
   setTechModalOpen: (open: boolean) => void;
   onAddTechnology: (e: React.FormEvent<HTMLFormElement>) => void;
 
+  // --- BATTERY ---
   isBatteryModalOpen: { techId: string } | null;
   setBatteryModalOpen: (val: { techId: string } | null) => void;
   onAddBattery: (e: React.FormEvent<HTMLFormElement>) => void;
 
+  // --- CONTACT ---
   isContactModalOpen: boolean;
   setContactModalOpen: (open: boolean) => void;
   onAddContact: (e: React.FormEvent<HTMLFormElement>) => void;
 
+  // --- EVENT (Scheduled) ---
   isEventModalOpen: boolean;
   setEventModalOpen: (open: boolean) => void;
   editingEvent: RegularEvent | null;
   onSaveEvent: (e: React.FormEvent<HTMLFormElement>) => void;
 
+  // --- TASK (Úkolníček) [NOVÉ] ---
+  isTaskModalOpen: boolean;
+  setTaskModalOpen: (open: boolean) => void;
+  editingTask: ObjectTask | null;
+  onSaveTask: (e: React.FormEvent<HTMLFormElement>) => void;
+
+  // --- EDIT OBJECT ---
   isEditObjectModalOpen: boolean;
   setEditObjectModalOpen: (open: boolean) => void;
   onEditObject: (e: React.FormEvent<HTMLFormElement>) => void;
   object: BuildingObject;
   groups: ObjectGroup[];
 
+  // --- LOG ENTRY ---
   isLogModalOpen: boolean;
   setLogModalOpen: (open: boolean) => void;
   templates: FormTemplate[];
@@ -66,7 +81,6 @@ interface ObjectModalsProps {
   setSelectedTemplateId: (id: string) => void;
   logFormData: Record<string, string>;
   setLogFormData: (data: Record<string, string>) => void;
-  // UPDATE: Přijímá volitelný argument images
   onAddLogEntry: (futureNote: string, images?: string[]) => void;
 }
 
@@ -77,9 +91,8 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
 
   // Handler pro odeslání logu včetně uploadu obrázků
   const handleLogSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); // Zastavíme reload stránky HNED na začátku
+    e.preventDefault(); 
     
-    // 1. Vytáhneme data z formuláře TEĎ, dokud formulář existuje
     const form = e.currentTarget as HTMLFormElement;
     const futureNoteInput = form.elements.namedItem('futureNote') as HTMLTextAreaElement | null;
     const futureNoteValue = futureNoteInput ? futureNoteInput.value : '';
@@ -88,15 +101,8 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
     const uploadedUrls: string[] = [];
 
     try {
-      // 2. Upload souborů (pokud nějaké jsou)
       if (logFiles.length > 0) {
         const api = getApiService();
-        
-        // Kontrola, zda apiService má metodu uploadFile
-        if (typeof api.uploadFile !== 'function') {
-           throw new Error("Metoda uploadFile neexistuje v apiService! Aktualizujte apiService.ts.");
-        }
-
         for (const file of logFiles) {
           const response = await api.uploadFile(file);
           if (response && response.url) {
@@ -105,14 +111,11 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
         }
       }
 
-      // 3. Předáme připravená data rodiči
       props.onAddLogEntry(futureNoteValue, uploadedUrls);
-
-      // Reset
       setLogFiles([]);
     } catch (error) {
       console.error("Chyba při ukládání záznamu:", error);
-      alert("Chyba při ukládání záznamu. Zkontrolujte konzoli (F12).");
+      alert("Chyba při ukládání záznamu.");
     } finally {
       setIsUploading(false);
     }
@@ -271,6 +274,7 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
           </form>
         </Modal>
       )}
+
       {/* 3. Modal: CONTACT */}
       {props.isContactModalOpen && (
         <Modal
@@ -330,6 +334,7 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
           </form>
         </Modal>
       )}
+
       {/* 4. Modal: EVENT (Planned Maintenance) */}
       {props.isEventModalOpen && (
         <Modal
@@ -350,7 +355,6 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
               />
             </div>
 
-            {/* Interval dáme nahoru, abychom podle něj mohli měnit formulář */}
             <div>
               <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
                 Opakování / Interval
@@ -358,10 +362,9 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
               <select
                 name="interval"
                 defaultValue={props.editingEvent?.interval || "Ročně"}
-                // Přidáme jednoduchý script pro změnu viditelnosti pole 'nextDate' (volitelné, pro jednoduchost necháme zobrazené obojí, ale logicky propojené)
                 className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="Jednorázově">Jednorázově (Neopakuje se)</option> {/* <--- NOVÉ */}
+                <option value="Jednorázově">Jednorázově (Neopakuje se)</option>
                 <option value="Měsíčně">Měsíčně</option>
                 <option value="Čtvrtletně">Čtvrtletně</option>
                 <option value="Pololetně">Pololetně</option>
@@ -377,7 +380,7 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
                   Plánované datum
                 </label>
                 <input
-                  name="nextDate" // Pro jednorázové akce je klíčové toto datum
+                  name="nextDate"
                   type="date"
                   defaultValue={props.editingEvent?.nextDate}
                   required
@@ -419,6 +422,7 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
           </form>
         </Modal>
       )}
+
       {/* 5. Modal: EDIT OBJECT */}
       {props.isEditObjectModalOpen && (
         <Modal
@@ -513,6 +517,7 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
           </form>
         </Modal>
       )}
+
       {/* 6. Modal: ADD LOG ENTRY */}
       {props.isLogModalOpen && (
         <Modal
@@ -636,9 +641,8 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
                   </div>
                 )}
               </div>
-              {/* ---------------------------------- */}
 
-              {/* --- NOVÁ SEKCE: PRO BUDOUCÍ JÁ --- */}
+              {/* --- SEKCE PRO PŘÍŠTÍ NÁVŠTĚVU --- */}
               <div className="pt-4 mt-4 border-t border-gray-100 dark:border-slate-800">
                 <label className="block text-xs font-black uppercase tracking-widest text-amber-500 mb-2 flex items-center gap-2">
                   Zpráva pro mé budoucí já (Odložená závada)
@@ -650,7 +654,6 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
                   placeholder="Např. Baterie 2 má zoxidovaný kontakt, příště vyčistit..."
                 />
               </div>
-              {/* ---------------------------------- */}
 
               <button
                 type="submit"
@@ -666,6 +669,79 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
               </button>
             </form>
           </div>
+        </Modal>
+      )}
+
+      {/* 7. Modal: TASK (Úkolníček) - NOVÉ */}
+      {props.isTaskModalOpen && (
+        <Modal
+          title={props.editingTask ? "Upravit úkol" : "Nový úkol"}
+          onClose={() => props.setTaskModalOpen(false)}
+        >
+          <form onSubmit={props.onSaveTask} className="space-y-4">
+            <div>
+              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Popis úkolu</label>
+              <input 
+                name="description" 
+                required 
+                defaultValue={props.editingTask?.description}
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500" 
+                placeholder="Např. Vyměnit zámek u branky"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Priorita</label>
+                <select 
+                   name="priority"
+                   defaultValue={props.editingTask?.priority || 'MEDIUM'}
+                   className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="LOW">Nízká</option>
+                  <option value="MEDIUM">Střední</option>
+                  <option value="HIGH">Vysoká</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Termín</label>
+                <input 
+                  type="date" 
+                  name="deadline"
+                  required
+                  defaultValue={props.editingTask?.deadline || new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div>
+               <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Stav</label>
+               <select 
+                   name="status"
+                   defaultValue={props.editingTask?.status || 'OPEN'}
+                   className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="OPEN">Založeno</option>
+                  <option value="IN_PROGRESS">Řeší se</option>
+                  <option value="DONE">Vyřešeno</option>
+                </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Poznámka</label>
+              <textarea 
+                name="note" 
+                defaultValue={props.editingTask?.note}
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-medium dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                rows={3} 
+              />
+            </div>
+
+            <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-500/20 active:scale-95 transition-all">
+              Uložit úkol
+            </button>
+          </form>
         </Modal>
       )}
     </>

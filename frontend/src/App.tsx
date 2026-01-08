@@ -35,6 +35,7 @@ import MapView from './components/MapView';
 import Login from './components/Login';
 import CalendarView from './components/CalendarView';
 import GroupManagement from './components/GroupManagement';
+import { GlobalTaskList } from './components/GlobalTaskList'; // IMPORT
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(authService.getCurrentUser());
@@ -266,7 +267,7 @@ const App: React.FC = () => {
                 <Route path="/users" element={
                    currentUser.role === 'ADMIN' ? <UserManagement /> : <Navigate to="/" />
                 } />
-                
+                <Route path="/tasks" element={<GlobalTaskList objects={objects} />} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             )}

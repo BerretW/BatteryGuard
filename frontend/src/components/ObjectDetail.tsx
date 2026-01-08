@@ -256,15 +256,9 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   };
 
   // Logs & Future Notes Logic
-  // PŘIDÁNO: Podpora pro images argument
-  const handleAddLogEntry = (e: React.FormEvent, images: string[] = []) => {
-    e.preventDefault();
+  const handleAddLogEntry = (futureNote: string, images: string[] = []) => {
+    // Odstranili jsme e.preventDefault(), to už řeší modal
     
-    const form = e.target as HTMLFormElement;
-    // Zkusíme najít futureNote v elements, pokud tam není, je to v pořádku
-    const futureNoteInput = form.elements.namedItem('futureNote') as HTMLTextAreaElement | null;
-    const futureNote = futureNoteInput ? futureNoteInput.value : '';
-
     const template = templates.find(t => t.id === selectedTemplateId);
     if (!template) return;
 
@@ -275,7 +269,7 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
       date: new Date().toISOString(),
       author: currentUser?.name || 'Neznámý',
       data: logFormData,
-      images: images // Uložení URL obrázků
+      images: images 
     };
 
     let updatedObject = {

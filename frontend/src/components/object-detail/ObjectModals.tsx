@@ -67,7 +67,7 @@ interface ObjectModalsProps {
   logFormData: Record<string, string>;
   setLogFormData: (data: Record<string, string>) => void;
   // UPDATE: Přijímá volitelný argument images
-  onAddLogEntry: (e: React.FormEvent, images?: string[]) => void;
+  onAddLogEntry: (futureNote: string, images?: string[]) => void;
 }
 
 export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
@@ -77,37 +77,42 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
 
   // Handler pro odeslání logu včetně uploadu obrázků
   const handleLogSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // Zastavíme reload stránky HNED na začátku
+    
+    // 1. Vytáhneme data z formuláře TEĎ, dokud formulář existuje
+    const form = e.currentTarget as HTMLFormElement;
+    const futureNoteInput = form.elements.namedItem('futureNote') as HTMLTextAreaElement | null;
+    const futureNoteValue = futureNoteInput ? futureNoteInput.value : '';
+
     setIsUploading(true);
     const uploadedUrls: string[] = [];
 
-    code;
-    Code;
-    download;
-    content_copy;
-    expand_less;
     try {
-      // 1. Pokud jsou vybrané soubory, nahrajeme je postupně
+      // 2. Upload souborů (pokud nějaké jsou)
       if (logFiles.length > 0) {
         const api = getApiService();
-        // Poznámka: Zde předpokládáme, že apiService má metodu uploadFile (přidáno v předchozím kroku)
-        // Použijeme type casting (any) pro případ, že TypeScript definice ještě nebyla aktualizována
+        
+        // Kontrola, zda apiService má metodu uploadFile
+        if (typeof api.uploadFile !== 'function') {
+           throw new Error("Metoda uploadFile neexistuje v apiService! Aktualizujte apiService.ts.");
+        }
+
         for (const file of logFiles) {
-          const response = await (api as any).uploadFile(file);
+          const response = await api.uploadFile(file);
           if (response && response.url) {
             uploadedUrls.push(response.url);
           }
         }
       }
 
-      // 2. Předáme data rodiči k uložení do DB
-      props.onAddLogEntry(e, uploadedUrls);
+      // 3. Předáme připravená data rodiči
+      props.onAddLogEntry(futureNoteValue, uploadedUrls);
 
-      // 3. Reset
+      // Reset
       setLogFiles([]);
     } catch (error) {
-      console.error("Upload error:", error);
-      alert("Chyba při nahrávání obrázků. Záznam nebyl uložen.");
+      console.error("Chyba při ukládání záznamu:", error);
+      alert("Chyba při ukládání záznamu. Zkontrolujte konzoli (F12).");
     } finally {
       setIsUploading(false);
     }

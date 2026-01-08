@@ -67,27 +67,28 @@ class ApiService implements IApiService {
   }
 
   // --- Implementation ---
-
   async uploadFile(file: File): Promise<{ url: string, filename: string }> {
     const formData = new FormData();
     formData.append('file', file);
     
-    // Zde nepoužíváme standardní this.request, protože potřebujeme poslat FormData bez Content-Type: application/json
-    const token = localStorage.getItem('bg_auth_token'); // Použijte vaši konstantu TOKEN_KEY
+    const token = localStorage.getItem('bg_auth_token'); // nebo vaše konstanta TOKEN_KEY
     const cleanToken = token ? token.replace(/^"(.*)"$/, '$1') : '';
 
     const response = await fetch('/api/upload', {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${cleanToken}`
-            // Content-Type se nastaví automaticky prohlížečem včetně boundary
+            // Content-Type NEPRIDAVAT ručně, browser ho nastaví sám (multipart/form-data)
         },
         body: formData
     });
 
-    if (!response.ok) throw new Error('Upload failed');
+    if (!response.ok) {
+        const txt = await response.text();
+        throw new Error(`Upload failed: ${txt}`);
+    }
     return response.json();
-}
+  }
 
   async getObjects(): Promise<BuildingObject[]> {
     return this.request('/objects');

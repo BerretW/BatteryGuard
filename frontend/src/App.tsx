@@ -15,7 +15,8 @@ import {
   Clock,
   Tags,
   Sun,
-  Moon
+  Moon,
+  CheckCircle2
 } from 'lucide-react';
 
 // Importy typů
@@ -35,7 +36,7 @@ import MapView from './components/MapView';
 import Login from './components/Login';
 import CalendarView from './components/CalendarView';
 import GroupManagement from './components/GroupManagement';
-import { GlobalTaskList } from './components/GlobalTaskList'; // IMPORT
+import { GlobalTaskList } from './components/GlobalTaskList';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(authService.getCurrentUser());
@@ -50,7 +51,6 @@ const App: React.FC = () => {
       (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
   
-  // Získání instance API
   const api = getApiService();
 
   // Effect pro Dark Mode
@@ -70,27 +70,24 @@ const App: React.FC = () => {
       setIsLoading(false);
       return;
     }
-
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        // Načítáme objekty a skupiny paralelně z API
-        // apiService se stará o komunikaci s backendem /api/objects a /api/groups
-        const [objData, groupData] = await Promise.all([
-          api.getObjects(),
-          api.getGroups()
-        ]);
-        setObjects(objData);
-        setGroups(groupData);
-      } catch (error) {
-        console.error("Chyba při načítání dat z API:", error);
-        // V produkci zde můžeme přidat toast notifikaci
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchData();
   }, [currentUser]);
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      const [objData, groupData] = await Promise.all([
+        api.getObjects(),
+        api.getGroups()
+      ]);
+      setObjects(objData);
+      setGroups(groupData);
+    } catch (error) {
+      console.error("Chyba při načítání dat z API:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLogin = () => {
     setCurrentUser(authService.getCurrentUser());
@@ -101,18 +98,13 @@ const App: React.FC = () => {
     setCurrentUser(null);
   };
 
-  const updateObjects = async (newObjects: BuildingObject[]) => {
-    // Optimistický update UI
+  // --- ZMĚNA: Update už neukládá na server, jen mění UI ---
+  // Komponenty (ObjectDetail, ObjectList) volají API samy a pak zavolají toto pro update UI.
+  const updateLocalObjects = (newObjects: BuildingObject[]) => {
     setObjects(newObjects);
-    try {
-      await api.saveObjects(newObjects);
-    } catch (error) {
-      console.error("Save error:", error);
-      alert("Chyba při ukládání dat na server.");
-      // Zde by v ideálním případě měl být revert state (načtení původních dat)
-    }
   };
 
+  // Skupiny jsou malé, tam můžeme nechat hromadné uložení pro jednoduchost
   const updateGroups = async (newGroups: ObjectGroup[]) => {
     setGroups(newGroups);
     try {
@@ -128,7 +120,7 @@ const App: React.FC = () => {
     return <Login onLogin={handleLogin} />;
   }
 
-  // 2. Stav: Přihlášený, ale neautorizovaný uživatel (čeká na schválení)
+  // 2. Stav: Přihlášený, ale neautorizovaný uživatel
   if (!currentUser.isAuthorized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6 text-center">
@@ -150,12 +142,12 @@ const App: React.FC = () => {
     );
   }
 
-  // 3. Stav: Plně přihlášený a autorizovaný uživatel -> Hlavní aplikace
+  // 3. Stav: Plně přihlášený uživatel
   return (
     <Router>
       <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
         
-        {/* Mobilní overlay pro sidebar */}
+        {/* Mobilní overlay */}
         {isSidebarOpen && (
           <div 
             className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden" 
@@ -182,12 +174,12 @@ const App: React.FC = () => {
             <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
               <SidebarLink to="/" icon={<LayoutDashboard />} label="Dashboard" onClick={() => setSidebarOpen(false)} />
               <SidebarLink to="/objects" icon={<Building2 />} label="Objekty" onClick={() => setSidebarOpen(false)} />
+              <SidebarLink to="/tasks" icon={<CheckCircle2 />} label="Úkolníček" onClick={() => setSidebarOpen(false)} />
               <SidebarLink to="/groups" icon={<Tags />} label="Zákazníci / Skupiny" onClick={() => setSidebarOpen(false)} />
               <SidebarLink to="/map" icon={<MapIcon />} label="Mapa" onClick={() => setSidebarOpen(false)} />
               <SidebarLink to="/calendar" icon={<CalendarIcon />} label="Kalendář" onClick={() => setSidebarOpen(false)} />
               <SidebarLink to="/maintenance" icon={<ClipboardList />} label="Plán údržby" onClick={() => setSidebarOpen(false)} />
               
-              {/* Sekce pouze pro Adminy */}
               {currentUser.role === 'ADMIN' && (
                 <SidebarLink to="/users" icon={<Users />} label="Uživatelé" onClick={() => setSidebarOpen(false)} />
               )}
@@ -233,16 +225,25 @@ const App: React.FC = () => {
                 <h1 className="text-lg font-bold text-gray-800 dark:text-white truncate">BatteryGuard Pro</h1>
               </div>
               
-              <button 
-                onClick={() => setIsDarkMode(!isDarkMode)}
-                className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:ring-2 hover:ring-blue-500/50 transition-all active:scale-95"
-              >
-                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
+              <div className="flex items-center gap-3">
+                <button 
+                    onClick={() => fetchData()}
+                    className="hidden sm:flex items-center gap-2 px-3 py-2 text-xs font-bold text-blue-600 bg-blue-50 dark:bg-slate-800 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-slate-700 transition"
+                    title="Obnovit data ze serveru"
+                >
+                    <Clock className="w-3.5 h-3.5" /> Synchronizovat
+                </button>
+                <button 
+                    onClick={() => setIsDarkMode(!isDarkMode)}
+                    className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:ring-2 hover:ring-blue-500/50 transition-all active:scale-95"
+                >
+                    {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
           </header>
 
-          {/* Obsah stránky (Router View) */}
+          {/* Router View */}
           <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50/50 dark:bg-slate-950 transition-colors duration-300">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-full space-y-4">
@@ -253,17 +254,16 @@ const App: React.FC = () => {
               <Routes>
                 <Route path="/" element={<Dashboard objects={objects} />} />
                 
-                {/* Předáváme "groups" jako props, aby komponenty nemusely volat lokální store */}
-                <Route path="/objects" element={<ObjectList objects={objects} setObjects={updateObjects} groups={groups} />} />
-                <Route path="/object/:id" element={<ObjectDetail objects={objects} setObjects={updateObjects} groups={groups} />} />
+                {/* Předáváme updateLocalObjects - komponenty už samy volají API */}
+                <Route path="/objects" element={<ObjectList objects={objects} setObjects={updateLocalObjects} groups={groups} />} />
+                <Route path="/object/:id" element={<ObjectDetail objects={objects} setObjects={updateLocalObjects} groups={groups} />} />
                 
                 <Route path="/groups" element={<GroupManagement groups={groups} setGroups={updateGroups} objects={objects} />} />
                 <Route path="/map" element={<MapView objects={objects} />} />
                 <Route path="/calendar" element={<CalendarView objects={objects} />} />
-                <Route path="/maintenance" element={<MaintenancePlanner objects={objects} setObjects={updateObjects} />} />
+                <Route path="/maintenance" element={<MaintenancePlanner objects={objects} setObjects={updateLocalObjects} />} />
                 <Route path="/settings" element={<Settings objects={objects} />} />
                 
-                {/* Admin only route - Správa uživatelů */}
                 <Route path="/users" element={
                    currentUser.role === 'ADMIN' ? <UserManagement /> : <Navigate to="/" />
                 } />
@@ -278,14 +278,12 @@ const App: React.FC = () => {
   );
 };
 
-// --- Pomocná komponenta pro User Management (Admin) ---
-// V produkci by měla být v samostatném souboru
+// --- User Management (Admin) ---
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(false);
   const current = authService.getCurrentUser();
 
-  // Načtení uživatelů při mountu (ASYNC z API)
   useEffect(() => {
     const fetchUsers = async () => {
         try {
@@ -306,7 +304,6 @@ const UserManagement: React.FC = () => {
     setLoading(true);
     try {
         await authService.authorizeUser(userId, role, isAuth);
-        // Refresh users
         const updatedUsers = await authService.getUsers();
         setUsers(updatedUsers);
     } catch (e) {
@@ -368,7 +365,6 @@ const UserManagement: React.FC = () => {
   );
 };
 
-// --- Pomocná komponenta pro Sidebar Link ---
 const SidebarLink: React.FC<{ to: string, icon: React.ReactNode, label: string, onClick: () => void }> = ({ to, icon, label, onClick }) => (
   <Link to={to} onClick={onClick} className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-slate-800 dark:hover:bg-slate-900 transition-colors text-slate-300 hover:text-white group">
     {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5 group-hover:text-blue-400 transition-colors' })}

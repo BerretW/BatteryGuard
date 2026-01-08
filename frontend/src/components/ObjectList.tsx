@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-// Added X to the lucide-react imports
 import { Building2, Search, Plus, MapPin, ChevronRight, Filter, Users, FileText, X } from 'lucide-react';
 import { BuildingObject, ObjectGroup } from '../types';
+import { getApiService } from '../services/apiService'; // <--- NOVÝ IMPORT
 
 interface ObjectListProps {
   objects: BuildingObject[];
   setObjects: (objects: BuildingObject[]) => void;
-  groups: ObjectGroup[]; // <--- PŘIDÁNO: Přijímáme skupiny přes props
+  groups: ObjectGroup[];
 }
 
 const ObjectList: React.FC<ObjectListProps> = ({ objects, setObjects, groups }) => {
@@ -16,9 +16,6 @@ const ObjectList: React.FC<ObjectListProps> = ({ objects, setObjects, groups }) 
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const navigate = useNavigate();
 
-  // ZDE BYLA CHYBA: useEffect s dataStore.getGroups() odstraněn.
-  // Používáme "groups" přímo z props.
-
   const filteredObjects = objects.filter(obj => {
     const matchesSearch = obj.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          obj.address.toLowerCase().includes(searchTerm.toLowerCase());
@@ -26,25 +23,37 @@ const ObjectList: React.FC<ObjectListProps> = ({ objects, setObjects, groups }) 
     return matchesSearch && matchesGroup;
   });
 
-  const addObject = (e: React.FormEvent<HTMLFormElement>) => {
+  // --- ZMĚNA: Nyní asynchronní funkce volající API ---
+  const addObject = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const newObj: BuildingObject = {
-      id: Math.random().toString(36).substr(2, 9),
+    const api = getApiService();
+
+    // Příprava dat pro backend (DTO)
+    // ID a prázdná pole (technologies, logs...) doplní backend
+    const newObjPayload: Partial<BuildingObject> = {
       name: formData.get('name') as string,
       address: formData.get('address') as string,
-      description: formData.get('description') as string,
-      internalNotes: formData.get('internalNotes') as string,
-      groupId: formData.get('groupId') as string || undefined,
-      lat: Number(formData.get('lat')) || undefined,
-      lng: Number(formData.get('lng')) || undefined,
-      technologies: [],
-      logEntries: [],
-      scheduledEvents: [],
-      contacts: []
+      description: (formData.get('description') as string) || '',
+      internalNotes: (formData.get('internalNotes') as string) || '',
+      groupId: (formData.get('groupId') as string) || undefined,
+      lat: formData.get('lat') ? Number(formData.get('lat')) : undefined,
+      lng: formData.get('lng') ? Number(formData.get('lng')) : undefined,
     };
-    setObjects([...objects, newObj]);
-    setAddModalOpen(false);
+
+    try {
+      // 1. Odeslání na server (Single Object Create)
+      const createdObject = await api.createObject(newObjPayload);
+
+      // 2. Aktualizace lokálního seznamu (UI)
+      // createdObject už obsahuje ID vygenerované databází
+      setObjects([...objects, createdObject]);
+      
+      setAddModalOpen(false);
+    } catch (error) {
+      console.error("Failed to create object:", error);
+      alert("Nepodařilo se vytvořit objekt. Zkontrolujte připojení.");
+    }
   };
 
   const getGroupName = (id?: string) => {

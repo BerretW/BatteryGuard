@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Shield, Users, Calendar, ClipboardCheck, AlertCircle } from 'lucide-react';
+import { Shield, Users, Calendar, ClipboardCheck, AlertCircle, FolderOpen } from 'lucide-react';
 import { 
   BuildingObject, BatteryStatus, Contact, RegularEvent, ObjectGroup, 
-  TechType, Technology, Battery, LogEntry, FormTemplate, PendingIssue 
+  TechType, Technology, Battery, LogEntry, FormTemplate, PendingIssue, FileAttachment 
 } from '../types';
 import { getApiService } from '../services/apiService';
 import { authService } from '../services/authService';
@@ -14,6 +14,7 @@ import { TechTab } from './object-detail/TechTab';
 import { InfoTab } from './object-detail/InfoTab';
 import { EventsTab } from './object-detail/EventsTab';
 import { LogTab } from './object-detail/LogTab';
+import { FilesTab } from './object-detail/FilesTab'; // <--- NOVÝ IMPORT
 import { ObjectModals } from './object-detail/ObjectModals';
 
 interface ObjectDetailProps {
@@ -28,8 +29,8 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   const api = getApiService();
   const currentUser = authService.getCurrentUser();
 
-  // State
-  const [activeTab, setActiveTab] = useState<'tech' | 'log' | 'events' | 'info'>('tech');
+  // State - PŘIDÁNA 'files' do activeTab
+  const [activeTab, setActiveTab] = useState<'tech' | 'log' | 'events' | 'info' | 'files'>('tech');
   
   // Modals state
   const [isTechModalOpen, setTechModalOpen] = useState(false);
@@ -80,6 +81,17 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   const getGroupInfo = (groupId?: string) => {
     const g = groups.find(g => g.id === groupId);
     return g || { name: 'Bez skupiny', color: '#94a3b8' };
+  };
+
+  // --- Files / Kartotéka Handlers (NOVÉ) ---
+  const addFileToObject = (file: FileAttachment) => {
+    const currentFiles = object.files || [];
+    updateCurrentObject({ ...object, files: [...currentFiles, file] });
+  };
+
+  const removeFileFromObject = (fileId: string) => {
+    const currentFiles = object.files || [];
+    updateCurrentObject({ ...object, files: currentFiles.filter(f => f.id !== fileId) });
   };
 
   // Technologies & Batteries
@@ -133,28 +145,25 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
     updateCurrentObject({ ...object, technologies: updatedTechnologies });
   };
 
-  // --- NOVÁ LOGIKA: Rychlá změna stavu s automatickým zápisem do logu ---
+  // Rychlá změna stavu s automatickým zápisem do logu
   const handleBatteryStatusChange = (techId: string, batteryId: string, newStatus: BatteryStatus) => {
     const tech = object.technologies.find(t => t.id === techId);
     const battery = tech?.batteries.find(b => b.id === batteryId);
     
-    // Pokud baterie neexistuje nebo je stav stejný, nic neděláme
     if (!tech || !battery || battery.status === newStatus) return;
 
     const oldStatus = battery.status;
     let updatedBattery = { ...battery, status: newStatus };
     let logNote = 'Automatický záznam z detailu objektu';
 
-    // === LOGIKA PRO VÝMĚNU (REPLACED) ===
     if (newStatus === BatteryStatus.REPLACED) {
         const now = new Date();
-        const installDateStr = now.toISOString().split('T')[0]; // Dnešek YYYY-MM-DD
+        const installDateStr = now.toISOString().split('T')[0];
         
         const nextDate = new Date(now);
-        nextDate.setFullYear(nextDate.getFullYear() + 2); // + 2 roky
+        nextDate.setFullYear(nextDate.getFullYear() + 2);
         const nextReplaceStr = nextDate.toISOString().split('T')[0];
 
-        // Aktualizujeme data v objektu baterie
         updatedBattery = {
             ...updatedBattery,
             installDate: installDateStr,
@@ -163,12 +172,10 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
 
         logNote += `. Aktualizováno datum instalace (${installDateStr}) a další výměny (${nextReplaceStr}).`;
     }
-    // =====================================
 
-    // 1. Vytvoření automatického záznamu do deníku
     const newLogEntry: LogEntry = {
       id: Math.random().toString(36).substr(2, 9),
-      templateId: 'system-auto-status', // Virtuální ID pro systémové zprávy
+      templateId: 'system-auto-status',
       templateName: 'Rychlá změna stavu',
       date: new Date().toISOString(),
       author: currentUser?.name || 'Systém',
@@ -181,7 +188,6 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
       }
     };
 
-    // 2. Aktualizace objektu (změna stavu baterie + přidání logu)
     const updatedTechnologies = object.technologies.map(t => {
       if (t.id !== techId) return t;
       return {
@@ -249,25 +255,27 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
     updateCurrentObject({ ...object, scheduledEvents: (object.scheduledEvents || []).filter(e => e.id !== id) });
   };
 
-  // --- Logs & Future Notes Logic ---
-  const handleAddLogEntry = (e: React.FormEvent) => {
+  // Logs & Future Notes Logic
+  // PŘIDÁNO: Podpora pro images argument
+  const handleAddLogEntry = (e: React.FormEvent, images: string[] = []) => {
     e.preventDefault();
     
-    // Získání "futureNote" přímo z formuláře (protože není v logFormData state)
     const form = e.target as HTMLFormElement;
-    const futureNote = (form.elements.namedItem('futureNote') as HTMLTextAreaElement)?.value;
+    // Zkusíme najít futureNote v elements, pokud tam není, je to v pořádku
+    const futureNoteInput = form.elements.namedItem('futureNote') as HTMLTextAreaElement | null;
+    const futureNote = futureNoteInput ? futureNoteInput.value : '';
 
     const template = templates.find(t => t.id === selectedTemplateId);
     if (!template) return;
 
-    // 1. Vytvoření standardního záznamu v deníku
     const newEntry: LogEntry = {
       id: Math.random().toString(36).substr(2, 9),
       templateId: template.id,
       templateName: template.name,
       date: new Date().toISOString(),
       author: currentUser?.name || 'Neznámý',
-      data: logFormData
+      data: logFormData,
+      images: images // Uložení URL obrázků
     };
 
     let updatedObject = {
@@ -275,7 +283,6 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
        logEntries: [newEntry, ...(object.logEntries || [])] 
     };
 
-    // 2. Pokud existuje "Zpráva pro budoucí já", vytvoříme PendingIssue
     if (futureNote && futureNote.trim() !== "") {
         const newIssue: PendingIssue = {
             id: Math.random().toString(36).substr(2, 9),
@@ -284,7 +291,6 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
             createdBy: currentUser?.name || 'Neznámý',
             status: 'OPEN'
         };
-        // Pokud pole neexistuje, vytvoříme ho
         updatedObject.pendingIssues = [newIssue, ...(object.pendingIssues || [])];
     }
 
@@ -293,7 +299,7 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
     setLogFormData({});
   };
 
-  // --- Handlers pro Pending Issues (Správa závad) ---
+  // Pending Issues
   const toggleIssueStatus = (issueId: string) => {
      const updatedIssues = (object.pendingIssues || []).map(issue => 
         issue.id === issueId 
@@ -310,11 +316,10 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   };
 
   // Edit Object
-const handleEditObject = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleEditObject = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     
-    // Získání hodnot lat/lng a převod na číslo (nebo undefined, pokud je prázdné)
     const latVal = fd.get('lat');
     const lngVal = fd.get('lng');
 
@@ -341,8 +346,13 @@ const handleEditObject = (e: React.FormEvent<HTMLFormElement>) => {
         onOpenEditModal={() => setEditObjectModalOpen(true)}
       />
 
+      {/* Navigace záložek */}
       <div className="flex p-1.5 bg-gray-100 dark:bg-slate-900 rounded-[1.5rem] border border-gray-200 dark:border-slate-800 overflow-x-auto no-scrollbar">
         <TabButton active={activeTab === 'tech'} onClick={() => setActiveTab('tech')} icon={<Shield />} label="Technologie" />
+        
+        {/* NOVÁ ZÁLOŽKA KARTOTÉKA */}
+        <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FolderOpen />} label="Kartotéka" />
+        
         <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} icon={<Users />} label="Kontakty & Info" />
         <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} icon={<Calendar />} label="Plánované" />
         <TabButton active={activeTab === 'log'} onClick={() => setActiveTab('log')} icon={<ClipboardCheck />} label="Deník" />
@@ -356,10 +366,19 @@ const handleEditObject = (e: React.FormEvent<HTMLFormElement>) => {
             onRemoveTech={removeTechnology}
             onAddBattery={(techId) => setBatteryModalOpen({ techId })}
             onRemoveBattery={removeBattery}
-            // Předání handleru pro rychlou změnu
             onStatusChange={handleBatteryStatusChange}
           />
         )}
+        
+        {/* NOVÝ OBSAH: KARTOTÉKA */}
+        {activeTab === 'files' && (
+            <FilesTab 
+                files={object.files || []} // Defenzivní přístup (kdyby pole v DB chybělo)
+                onAddFile={addFileToObject}
+                onRemoveFile={removeFileFromObject}
+            />
+        )}
+
         {activeTab === 'info' && (
           <InfoTab 
             contacts={object.contacts}
@@ -371,12 +390,12 @@ const handleEditObject = (e: React.FormEvent<HTMLFormElement>) => {
         {activeTab === 'events' && (
           <EventsTab 
             events={object.scheduledEvents}
-            pendingIssues={object.pendingIssues || []} // Předání odložených závad
+            pendingIssues={object.pendingIssues || []}
             onAddEvent={() => { setEditingEvent(null); setEventModalOpen(true); }}
             onEditEvent={(ev) => { setEditingEvent(ev); setEventModalOpen(true); }}
             onRemoveEvent={removeEvent}
-            onToggleIssue={toggleIssueStatus} // Handler pro změnu stavu závady
-            onDeleteIssue={deleteIssue}       // Handler pro smazání závady
+            onToggleIssue={toggleIssueStatus}
+            onDeleteIssue={deleteIssue}
           />
         )}
         {activeTab === 'log' && (

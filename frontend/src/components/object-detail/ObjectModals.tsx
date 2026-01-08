@@ -168,7 +168,7 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
           </form>
         </Modal>
       )}
-      code Code download content_copy expand_less
+
       {/* 2. Modal: ADD BATTERY */}
       {props.isBatteryModalOpen && (
         <Modal
@@ -344,48 +344,55 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
                 placeholder="Např. Roční revize EPS"
               />
             </div>
+
+            {/* Interval dáme nahoru, abychom podle něj mohli měnit formulář */}
+            <div>
+              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                Opakování / Interval
+              </label>
+              <select
+                name="interval"
+                defaultValue={props.editingEvent?.interval || "Ročně"}
+                // Přidáme jednoduchý script pro změnu viditelnosti pole 'nextDate' (volitelné, pro jednoduchost necháme zobrazené obojí, ale logicky propojené)
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Jednorázově">Jednorázově (Neopakuje se)</option> {/* <--- NOVÉ */}
+                <option value="Měsíčně">Měsíčně</option>
+                <option value="Čtvrtletně">Čtvrtletně</option>
+                <option value="Pololetně">Pololetně</option>
+                <option value="Ročně">Ročně</option>
+                <option value="Každé 2 roky">Každé 2 roky</option>
+                <option value="Každé 4 roky">Každé 4 roky</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-                  Datum provedení
+                  Plánované datum
                 </label>
                 <input
-                  name="startDate"
-                  type="date"
-                  defaultValue={props.editingEvent?.startDate}
-                  required
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-                  Příští termín
-                </label>
-                <input
-                  name="nextDate"
+                  name="nextDate" // Pro jednorázové akce je klíčové toto datum
                   type="date"
                   defaultValue={props.editingEvent?.nextDate}
                   required
                   className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                  Počáteční datum
+                </label>
+                <input
+                  name="startDate"
+                  type="date"
+                  defaultValue={props.editingEvent?.startDate || new Date().toISOString().split('T')[0]}
+                  required
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-                Interval opakování
-              </label>
-              <select
-                name="interval"
-                defaultValue={props.editingEvent?.interval}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="Měsíčně">Měsíčně</option>
-                <option value="Čtvrtletně">Čtvrtletně</option>
-                <option value="Pololetně">Pololetně</option>
-                <option value="Ročně">Ročně</option>
-                <option value="Každé 2 roky">Každé 2 roky</option>
-              </select>
-            </div>
+            
             <div>
               <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
                 Popis
@@ -395,6 +402,7 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
                 defaultValue={props.editingEvent?.description}
                 className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-medium dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                 rows={3}
+                placeholder="Podrobnosti k úkolu..."
               />
             </div>
             <button
@@ -597,7 +605,7 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
                 <input
                   type="file"
                   multiple
-                  accept="image/*"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" 
                   onChange={(e) => {
                     if (e.target.files) {
                       setLogFiles(Array.from(e.target.files));

@@ -20,7 +20,14 @@ class Technology(BaseModel):
     type: str
     location: str
     batteries: List[Battery] = []
-
+class FileAttachment(BaseModel):
+    id: str
+    name: str
+    url: str
+    type: str  # 'pdf', 'doc', 'image', 'other'
+    size: Optional[int] = 0
+    uploadedAt: str
+    uploadedBy: str
 class Contact(BaseModel):
     id: str
     name: str
@@ -60,6 +67,7 @@ class BuildingObject(BaseModel):
     groupId: Optional[str] = None
     lat: Optional[float] = None
     lng: Optional[float] = None
+    files: List[FileAttachment] = [] 
 
 class ObjectGroup(BaseModel):
     id: str
@@ -87,3 +95,4 @@ class LogEntry(BaseModel):
     author: str
     data: Dict[str, Any]
     images: List[str] = [] # PŘIDÁNO: Seznam URL obrázků
+

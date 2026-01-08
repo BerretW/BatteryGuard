@@ -93,28 +93,55 @@ export const EventsTab: React.FC<EventsTabProps> = ({
             <p className="text-sm font-bold text-gray-400 dark:text-slate-500">Žádný plán údržby</p>
             </div>
         ) : (
-            events.map(event => (
-            <div key={event.id} className="relative bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-800 flex flex-col md:flex-row gap-6 group">
-                <button 
-                    onClick={() => onRemoveEvent(event.id)}
-                    className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 transition-colors"
-                >
-                    <Trash2 className="w-4 h-4" />
-                </button>
-                <div className="bg-indigo-50 dark:bg-indigo-500/10 p-4 rounded-2xl flex flex-col items-center justify-center min-w-[100px] h-fit">
-                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{new Date(event.nextDate).toLocaleString('cs-CZ', { month: 'short' })}</span>
-                    <span className="text-3xl font-black text-indigo-700 dark:text-indigo-400">{new Date(event.nextDate).getDate()}</span>
-                </div>
-                <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-lg font-black text-gray-900 dark:text-white">{event.title}</h4>
-                        <span className="px-3 py-1 bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 rounded-full text-[10px] font-black uppercase tracking-widest">{event.interval}</span>
+            events.map(event => {
+              // Logika pro barvy podle typu intervalu
+              const isOneTime = event.interval === 'Jednorázově';
+              const dateColor = isOneTime ? 'text-purple-700 dark:text-purple-400' : 'text-indigo-700 dark:text-indigo-400';
+              const badgeColor = isOneTime ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300' : 'bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400';
+              const iconBg = isOneTime ? 'bg-purple-50 dark:bg-purple-500/10' : 'bg-indigo-50 dark:bg-indigo-500/10';
+              const labelText = isOneTime ? 'Mimořádné / Jednorázové' : event.interval;
+
+              return (
+                <div key={event.id} className="relative bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-800 flex flex-col md:flex-row gap-6 group">
+                    <button 
+                        onClick={() => onRemoveEvent(event.id)}
+                        className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-2 text-slate-300 hover:text-red-500 transition-colors"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                    
+                    {/* Datum Box */}
+                    <div className={`${iconBg} p-4 rounded-2xl flex flex-col items-center justify-center min-w-[100px] h-fit`}>
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${isOneTime ? 'text-purple-400' : 'text-indigo-400'}`}>
+                          {new Date(event.nextDate).toLocaleString('cs-CZ', { month: 'short' })}
+                        </span>
+                        <span className={`text-3xl font-black ${dateColor}`}>
+                          {new Date(event.nextDate).getDate()}
+                        </span>
+                        {/* Rok zobrazíme jen pokud není letošní */}
+                        {new Date(event.nextDate).getFullYear() !== new Date().getFullYear() && (
+                           <span className="text-[10px] font-bold text-gray-400 mt-1">{new Date(event.nextDate).getFullYear()}</span>
+                        )}
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-slate-400 font-medium mb-4">{event.description}</p>
-                    <button onClick={() => onEditEvent(event)} className="px-4 py-2 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-indigo-500 hover:text-white transition-all">Upravit</button>
+
+                    <div className="flex-1">
+                        <div className="flex items-center justify-between mb-2 mr-8">
+                            <h4 className="text-lg font-black text-gray-900 dark:text-white">{event.title}</h4>
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${badgeColor}`}>
+                              {labelText}
+                            </span>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-slate-400 font-medium mb-4">{event.description || "Bez popisu"}</p>
+                        
+                        <div className="flex gap-2">
+                           <button onClick={() => onEditEvent(event)} className="px-4 py-2 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-slate-200 rounded-xl text-xs font-bold hover:bg-indigo-500 hover:text-white transition-all">
+                             Upravit
+                           </button>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            ))
+              );
+            })
         )}
       </div>
     </div>

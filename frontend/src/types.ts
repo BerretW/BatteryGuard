@@ -109,6 +109,7 @@ export interface BuildingObject {
   groupId?: string;
   lat?: number;
   lng?: number;
+  files: FileAttachment[];
 }
 
 export interface AppUser {
@@ -142,4 +143,22 @@ export interface LogEntry {
   author: string;
   data: Record<string, string>;
   images?: string[]; // PŘIDÁNO
+}
+export type FileCategory = 
+  | 'REVISION' 
+  | 'PROJECT' 
+  | 'PHOTO' 
+  | 'MANUAL' 
+  | 'CONTRACT' 
+  | 'OTHER';
+
+export interface FileAttachment {
+  id: string;
+  name: string;
+  url: string;
+  type: 'pdf' | 'doc' | 'excel' | 'image' | 'other';
+  category: FileCategory; // <--- NOVÉ POLE
+  size: number;
+  uploadedAt: string;
+  uploadedBy: string;
 }

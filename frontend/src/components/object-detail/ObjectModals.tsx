@@ -5,6 +5,7 @@ import {
   ObjectGroup,
   BatteryStatus,
   TechType,
+  DeviceType,
   RegularEvent,
   FormTemplate,
   ObjectTask,       // <--- NOVÉ
@@ -12,6 +13,7 @@ import {
   TaskStatus        // <--- NOVÉ
 } from "../../types";
 import { getApiService } from "../../services/apiService";
+import { Technology } from "../../types"
 
 // Generic Modal Wrapper
 const Modal: React.FC<{
@@ -43,7 +45,7 @@ interface ObjectModalsProps {
   isTechModalOpen: boolean;
   setTechModalOpen: (open: boolean) => void;
   onAddTechnology: (e: React.FormEvent<HTMLFormElement>) => void;
-
+  editingTech: Technology | null; // <--- NOVÉ
   // --- BATTERY ---
   isBatteryModalOpen: { techId: string } | null;
   setBatteryModalOpen: (val: { techId: string } | null) => void;
@@ -123,60 +125,89 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
 
   return (
     <>
-      {/* 1. Modal: ADD TECHNOLOGY */}
+{/* 1. Modal: ADD / EDIT TECHNOLOGY */}
       {props.isTechModalOpen && (
         <Modal
-          title="Přidat systém"
+          title={props.editingTech ? "Upravit zařízení" : "Přidat zařízení"}
           onClose={() => props.setTechModalOpen(false)}
         >
           <form onSubmit={props.onAddTechnology} className="space-y-6">
+            {props.editingTech && (
+                <input type="hidden" name="id" value={props.editingTech.id} />
+            )}
+
             <div>
               <label className="block text-xs font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">
-                Název systému
+                Název (Identifikátor)
               </label>
               <input
                 name="name"
+                defaultValue={props.editingTech?.name}
                 required
-                placeholder="Např. Hlavní ústředna EPS"
+                placeholder="Např. ZDR-01 (Zdroj chodba)"
                 className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 dark:text-white rounded-2xl outline-none font-bold"
               />
             </div>
-            <div>
-              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">
-                Typ technologie
-              </label>
-              <select
-                name="type"
-                className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 dark:text-white rounded-2xl outline-none font-bold"
-              >
-                {Object.values(TechType).map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
+
+            {/* DVA SELECTY VEDLE SEBE */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">
+                    Systém
+                  </label>
+                  <select
+                    name="type"
+                    defaultValue={props.editingTech?.type}
+                    className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 dark:text-white rounded-2xl outline-none font-bold text-sm"
+                  >
+                    {Object.entries(TechType).map(([key, value]) => (
+                      <option key={key} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">
+                    Typ zařízení
+                  </label>
+                  <select
+                    name="deviceType"
+                    defaultValue={props.editingTech?.deviceType}
+                    className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 dark:text-white rounded-2xl outline-none font-bold text-sm"
+                  >
+                    {Object.values(DeviceType).map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
             </div>
+
             <div>
               <label className="block text-xs font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">
                 Umístění
               </label>
               <input
                 name="location"
+                defaultValue={props.editingTech?.location}
                 required
-                placeholder="Např. 1.NP, Místnost serverovny"
+                placeholder="Např. 3.NP, Místnost 302"
                 className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 dark:text-white rounded-2xl outline-none font-bold"
               />
             </div>
+
             <button
               type="submit"
               className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-500/20 active:scale-95 transition-all"
             >
-              Uložit systém
+              {props.editingTech ? "Uložit změny" : "Přidat zařízení"}
             </button>
           </form>
         </Modal>
       )}
-
       {/* 2. Modal: ADD BATTERY */}
       {props.isBatteryModalOpen && (
         <Modal

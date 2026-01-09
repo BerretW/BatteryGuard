@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Shield, Users, Calendar, ClipboardCheck, AlertCircle, FolderOpen } from 'lucide-react';
-import { 
-  BuildingObject, BatteryStatus, Contact, RegularEvent, ObjectGroup, 
-  TechType, Technology, Battery, LogEntry, FormTemplate, PendingIssue, FileAttachment, ObjectTask 
+import {
+  BuildingObject, BatteryStatus, Contact, RegularEvent, ObjectGroup,
+  TechType, Technology, Battery, LogEntry, FormTemplate, PendingIssue, FileAttachment, ObjectTask
 } from '../types';
 import { getApiService } from '../services/apiService';
 import { authService } from '../services/authService';
@@ -17,7 +17,7 @@ import { LogTab } from './object-detail/LogTab';
 import { FilesTab } from './object-detail/FilesTab';
 import { TasksTab } from './object-detail/TasksTab';
 import { ObjectModals } from './object-detail/ObjectModals';
-
+import { DeviceType } from '../types';
 interface ObjectDetailProps {
   objects: BuildingObject[];
   setObjects: (objects: BuildingObject[]) => void;
@@ -29,13 +29,13 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   const navigate = useNavigate();
   const api = getApiService();
   const currentUser = authService.getCurrentUser();
-  
+
   // Najdeme objekt v lokálním seznamu (pro prvotní render), ale spoléháme na API
   const object = objects.find(o => o.id === id);
 
   // UI State
   const [activeTab, setActiveTab] = useState<'tech' | 'log' | 'events' | 'info' | 'files' | 'tasks'>('tech');
-  
+
   // Modals state
   const [isTechModalOpen, setTechModalOpen] = useState(false);
   const [isBatteryModalOpen, setBatteryModalOpen] = useState<{ techId: string } | null>(null);
@@ -44,14 +44,14 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   const [isEventModalOpen, setEventModalOpen] = useState(false);
   const [isContactModalOpen, setContactModalOpen] = useState(false);
   const [isTaskModalOpen, setTaskModalOpen] = useState(false);
-  
+
   // Data editing state
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [logFormData, setLogFormData] = useState<Record<string, string>>({});
   const [editingEvent, setEditingEvent] = useState<RegularEvent | null>(null);
   const [editingTask, setEditingTask] = useState<ObjectTask | null>(null);
-
+  const [editingTech, setEditingTech] = useState<Technology | null>(null);
   // --- DATA LOADING & REFRESH ---
 
   // 1. Načtení šablon
@@ -104,75 +104,75 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   const handleSaveTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    
+
     // Validace
     if (!currentUser) return alert("Musíte být přihlášen.");
 
     const taskData: any = {
-        description: fd.get('description') as string,
-        deadline: fd.get('deadline') as string,
-        priority: fd.get('priority'),
-        status: fd.get('status'),
-        note: fd.get('note') as string,
+      description: fd.get('description') as string,
+      deadline: fd.get('deadline') as string,
+      priority: fd.get('priority'),
+      status: fd.get('status'),
+      note: fd.get('note') as string,
     };
 
     try {
-        if (editingTask) {
-             // UPDATE
-             await api.updateTask(object.id, editingTask.id, taskData);
-        } else {
-             // CREATE
-             const newTask = {
-                 ...taskData,
-                 id: Math.random().toString(36).substr(2, 9),
-                 createdAt: new Date().toISOString(),
-                 createdBy: currentUser.name
-             };
-             await api.addTask(object.id, newTask);
-        }
-        await reloadObject();
-        setTaskModalOpen(false);
-        setEditingTask(null);
+      if (editingTask) {
+        // UPDATE
+        await api.updateTask(object.id, editingTask.id, taskData);
+      } else {
+        // CREATE
+        const newTask = {
+          ...taskData,
+          id: Math.random().toString(36).substr(2, 9),
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser.name
+        };
+        await api.addTask(object.id, newTask);
+      }
+      await reloadObject();
+      setTaskModalOpen(false);
+      setEditingTask(null);
     } catch (e) {
-        alert("Chyba při ukládání úkolu.");
+      alert("Chyba při ukládání úkolu.");
     }
   };
 
   const removeTask = async (taskId: string) => {
     if (!confirm("Smazat úkol?")) return;
     try {
-        await api.removeTask(object.id, taskId);
-        await reloadObject();
+      await api.removeTask(object.id, taskId);
+      await reloadObject();
     } catch (e) {
-        alert("Chyba při mazání úkolu.");
+      alert("Chyba při mazání úkolu.");
     }
   };
-  
+
   const quickTaskStatusChange = async (task: ObjectTask, newStatus: any) => {
-     try {
-         await api.updateTask(object.id, task.id, { status: newStatus });
-         await reloadObject();
-     } catch (e) {
-         console.error("Failed to update status", e);
-     }
+    try {
+      await api.updateTask(object.id, task.id, { status: newStatus });
+      await reloadObject();
+    } catch (e) {
+      console.error("Failed to update status", e);
+    }
   };
 
   // 2. Files (Kartotéka)
   const addFileToObject = async (file: FileAttachment) => {
     try {
-        await api.addToCollection(object.id, 'files', file);
-        await reloadObject();
+      await api.addToCollection(object.id, 'files', file);
+      await reloadObject();
     } catch (e) {
-        alert("Chyba při ukládání souboru.");
+      alert("Chyba při ukládání souboru.");
     }
   };
 
   const removeFileFromObject = async (fileId: string) => {
     try {
-        await api.removeFromCollection(object.id, 'files', fileId);
-        await reloadObject();
+      await api.removeFromCollection(object.id, 'files', fileId);
+      await reloadObject();
     } catch (e) {
-        alert("Chyba při mazání souboru.");
+      alert("Chyba při mazání souboru.");
     }
   };
 
@@ -180,29 +180,42 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
   const handleAddTechnology = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const newTech: Technology = {
-      id: Math.random().toString(36).substr(2, 9),
+    
+    // ZMĚNA: Čteme i deviceType
+    const techData = {
       name: fd.get('name') as string,
       type: fd.get('type') as TechType,
+      deviceType: fd.get('deviceType') as DeviceType, // <--- NOVÉ
       location: fd.get('location') as string,
-      batteries: []
     };
+
     try {
-        await api.addTechnology(object.id, newTech);
+        if (editingTech) {
+            await api.updateTechnology(object.id, editingTech.id, techData);
+        } else {
+            const newTech: Technology = {
+              id: Math.random().toString(36).substr(2, 9),
+              ...techData,
+              batteries: []
+            };
+            await api.addTechnology(object.id, newTech);
+        }
+        
         await reloadObject();
         setTechModalOpen(false);
+        setEditingTech(null);
     } catch (e) {
-        alert("Chyba při přidávání systému.");
+        alert("Chyba při ukládání systému.");
     }
   };
 
   const removeTechnology = async (techId: string) => {
-    if(!confirm("Opravdu smazat tento systém a všechny jeho baterie?")) return;
+    if (!confirm("Opravdu smazat tento systém a všechny jeho baterie?")) return;
     try {
-        await api.removeTechnology(object.id, techId);
-        await reloadObject();
+      await api.removeTechnology(object.id, techId);
+      await reloadObject();
     } catch (e) {
-        alert("Chyba při mazání systému.");
+      alert("Chyba při mazání systému.");
     }
   };
 
@@ -223,80 +236,80 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ objects, setObjects, groups
       serialNumber: fd.get('serialNumber') as string
     };
     try {
-        await api.addBattery(object.id, isBatteryModalOpen.techId, newBattery);
-        await reloadObject();
-        setBatteryModalOpen(null);
+      await api.addBattery(object.id, isBatteryModalOpen.techId, newBattery);
+      await reloadObject();
+      setBatteryModalOpen(null);
     } catch (e) {
-        alert("Chyba při přidávání baterie.");
+      alert("Chyba při přidávání baterie.");
     }
   };
 
   const removeBattery = async (techId: string, batteryId: string) => {
-    if(!confirm("Smazat baterii?")) return;
+    if (!confirm("Smazat baterii?")) return;
     try {
-        await api.removeBattery(object.id, techId, batteryId);
-        await reloadObject();
+      await api.removeBattery(object.id, techId, batteryId);
+      await reloadObject();
     } catch (e) {
-        alert("Chyba při mazání baterie.");
+      alert("Chyba při mazání baterie.");
     }
   };
 
-const handleBatteryStatusChange = async (techId: string, batteryId: string, newStatus: BatteryStatus) => {
+  const handleBatteryStatusChange = async (techId: string, batteryId: string, newStatus: BatteryStatus) => {
     const tech = object.technologies.find(t => t.id === techId);
     const battery = tech?.batteries.find(b => b.id === batteryId);
-    
+
     if (!tech || !battery || battery.status === newStatus) return;
 
     try {
-        const oldStatus = battery.status;
-        let extraData: any = {};
-        let logNote = 'Automatický záznam z detailu objektu';
+      const oldStatus = battery.status;
+      let extraData: any = {};
+      let logNote = 'Automatický záznam z detailu objektu';
 
-        // LOGIKA PRO VÝMĚNU
-        if (newStatus === BatteryStatus.REPLACED) {
-            const now = new Date();
-            const installDateStr = now.toISOString().split('T')[0];
-            
-            // Získání nastavení ze skupiny objektu
-            const group = groups.find(g => g.id === object.groupId);
-            const lifeMonths = group?.defaultBatteryLifeMonths || 24; // Default 24 měsíců
+      // LOGIKA PRO VÝMĚNU
+      if (newStatus === BatteryStatus.REPLACED) {
+        const now = new Date();
+        const installDateStr = now.toISOString().split('T')[0];
 
-            const nextDate = new Date(now);
-            nextDate.setMonth(nextDate.getMonth() + lifeMonths);
-            const nextReplaceStr = nextDate.toISOString().split('T')[0];
+        // Získání nastavení ze skupiny objektu
+        const group = groups.find(g => g.id === object.groupId);
+        const lifeMonths = group?.defaultBatteryLifeMonths || 24; // Default 24 měsíců
 
-            extraData = {
-                installDate: installDateStr,
-                nextReplacementDate: nextReplaceStr
-            };
-            logNote += `. Aktualizováno datum instalace (${installDateStr}). Další výměna nastavena za ${lifeMonths} měsíců (${nextReplaceStr}).`;
-        }
+        const nextDate = new Date(now);
+        nextDate.setMonth(nextDate.getMonth() + lifeMonths);
+        const nextReplaceStr = nextDate.toISOString().split('T')[0];
 
-        // 1. Update statusu baterie (Atomicky)
-        await api.updateBatteryStatus(object.id, techId, batteryId, newStatus, extraData);
-
-        // 2. Vytvoření logu (Atomicky)
-const newLogEntry: LogEntry = {
-            id: Math.random().toString(36).substr(2, 9),
-            templateId: 'system-auto-status',
-            templateName: 'Rychlá změna stavu',
-            date: new Date().toISOString(),
-            author: currentUser?.name || 'Systém',
-            data: {
-                'Technologie': tech.name,
-                'Baterie': `${battery.capacityAh}Ah / ${battery.voltageV}V`,
-                'Původní stav': oldStatus,
-                'Nový stav': newStatus,
-                'Poznámka': logNote
-            }
+        extraData = {
+          installDate: installDateStr,
+          nextReplacementDate: nextReplaceStr
         };
-        await api.addLogEntry(object.id, newLogEntry);
-        await reloadObject();
+        logNote += `. Aktualizováno datum instalace (${installDateStr}). Další výměna nastavena za ${lifeMonths} měsíců (${nextReplaceStr}).`;
+      }
+
+      // 1. Update statusu baterie (Atomicky)
+      await api.updateBatteryStatus(object.id, techId, batteryId, newStatus, extraData);
+
+      // 2. Vytvoření logu (Atomicky)
+      const newLogEntry: LogEntry = {
+        id: Math.random().toString(36).substr(2, 9),
+        templateId: 'system-auto-status',
+        templateName: 'Rychlá změna stavu',
+        date: new Date().toISOString(),
+        author: currentUser?.name || 'Systém',
+        data: {
+          'Technologie': tech.name,
+          'Baterie': `${battery.capacityAh}Ah / ${battery.voltageV}V`,
+          'Původní stav': oldStatus,
+          'Nový stav': newStatus,
+          'Poznámka': logNote
+        }
+      };
+      await api.addLogEntry(object.id, newLogEntry);
+      await reloadObject();
 
 
     } catch (e) {
-        console.error("Status change error", e);
-        alert("Chyba při změně stavu.");
+      console.error("Status change error", e);
+      alert("Chyba při změně stavu.");
     }
   };
 
@@ -312,17 +325,17 @@ const newLogEntry: LogEntry = {
       email: fd.get('email') as string
     };
     try {
-        await api.addToCollection(object.id, 'contacts', newContact);
-        await reloadObject();
-        setContactModalOpen(false);
+      await api.addToCollection(object.id, 'contacts', newContact);
+      await reloadObject();
+      setContactModalOpen(false);
     } catch (e) { alert("Chyba při ukládání kontaktu."); }
   };
 
   const removeContact = async (id: string) => {
-    if(!confirm("Smazat kontakt?")) return;
+    if (!confirm("Smazat kontakt?")) return;
     try {
-        await api.removeFromCollection(object.id, 'contacts', id);
-        await reloadObject();
+      await api.removeFromCollection(object.id, 'contacts', id);
+      await reloadObject();
     } catch (e) { alert("Chyba při mazání kontaktu."); }
   };
 
@@ -330,7 +343,7 @@ const newLogEntry: LogEntry = {
   const handleSaveEvent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    
+
     const eventData: RegularEvent = {
       id: editingEvent ? editingEvent.id : Math.random().toString(36).substr(2, 9),
       title: fd.get('title') as string,
@@ -343,26 +356,26 @@ const newLogEntry: LogEntry = {
     };
 
     try {
-        // Backend nemá dedikovaný endpoint pro update eventu v poli, 
-        // použijeme Remove + Add pro editaci (nebo čistý Add pro nový)
-        if (editingEvent) {
-             await api.removeFromCollection(object.id, 'scheduledEvents', editingEvent.id);
-        }
-        await api.addToCollection(object.id, 'scheduledEvents', eventData);
-        
-        await reloadObject();
-        setEventModalOpen(false);
-        setEditingEvent(null);
+      // Backend nemá dedikovaný endpoint pro update eventu v poli, 
+      // použijeme Remove + Add pro editaci (nebo čistý Add pro nový)
+      if (editingEvent) {
+        await api.removeFromCollection(object.id, 'scheduledEvents', editingEvent.id);
+      }
+      await api.addToCollection(object.id, 'scheduledEvents', eventData);
+
+      await reloadObject();
+      setEventModalOpen(false);
+      setEditingEvent(null);
     } catch (e) {
-        alert("Chyba při ukládání události.");
+      alert("Chyba při ukládání události.");
     }
   };
 
   const removeEvent = async (id: string) => {
-    if(!confirm("Smazat událost?")) return;
+    if (!confirm("Smazat událost?")) return;
     try {
-        await api.removeFromCollection(object.id, 'scheduledEvents', id);
-        await reloadObject();
+      await api.removeFromCollection(object.id, 'scheduledEvents', id);
+      await reloadObject();
     } catch (e) { alert("Chyba při mazání události."); }
   };
 
@@ -378,57 +391,57 @@ const newLogEntry: LogEntry = {
       date: new Date().toISOString(),
       author: currentUser?.name || 'Neznámý',
       data: logFormData,
-      images: images 
+      images: images
     };
 
     try {
-        // 1. Uložit Log
-        await api.addLogEntry(object.id, newEntry);
+      // 1. Uložit Log
+      await api.addLogEntry(object.id, newEntry);
 
-        // 2. Pokud je poznámka pro budoucí já, uložit jako PendingIssue
-        if (futureNote && futureNote.trim() !== "") {
-            const newIssue: PendingIssue = {
-                id: Math.random().toString(36).substr(2, 9),
-                text: futureNote,
-                createdAt: new Date().toISOString(),
-                createdBy: currentUser?.name || 'Neznámý',
-                status: 'OPEN'
-            };
-            await api.addToCollection(object.id, 'pendingIssues', newIssue);
-        }
+      // 2. Pokud je poznámka pro budoucí já, uložit jako PendingIssue
+      if (futureNote && futureNote.trim() !== "") {
+        const newIssue: PendingIssue = {
+          id: Math.random().toString(36).substr(2, 9),
+          text: futureNote,
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser?.name || 'Neznámý',
+          status: 'OPEN'
+        };
+        await api.addToCollection(object.id, 'pendingIssues', newIssue);
+      }
 
-        await reloadObject();
-        setLogModalOpen(false);
-        setLogFormData({});
+      await reloadObject();
+      setLogModalOpen(false);
+      setLogFormData({});
     } catch (e) {
-        alert("Chyba při ukládání záznamu.");
+      alert("Chyba při ukládání záznamu.");
     }
   };
 
   // 7. Pending Issues Actions
   const toggleIssueStatus = async (issueId: string) => {
-     const issue = object.pendingIssues?.find(i => i.id === issueId);
-     if (!issue) return;
-     const newStatus = issue.status === 'OPEN' ? 'RESOLVED' : 'OPEN';
-     try {
-         await api.updateIssueStatus(object.id, issueId, newStatus);
-         await reloadObject();
-     } catch (e) { alert("Chyba při změně stavu."); }
+    const issue = object.pendingIssues?.find(i => i.id === issueId);
+    if (!issue) return;
+    const newStatus = issue.status === 'OPEN' ? 'RESOLVED' : 'OPEN';
+    try {
+      await api.updateIssueStatus(object.id, issueId, newStatus);
+      await reloadObject();
+    } catch (e) { alert("Chyba při změně stavu."); }
   };
 
   const deleteIssue = async (issueId: string) => {
-      if(!confirm("Smazat tuto poznámku?")) return;
-      try {
-          await api.removeFromCollection(object.id, 'pendingIssues', issueId);
-          await reloadObject();
-      } catch (e) { alert("Chyba při mazání."); }
+    if (!confirm("Smazat tuto poznámku?")) return;
+    try {
+      await api.removeFromCollection(object.id, 'pendingIssues', issueId);
+      await reloadObject();
+    } catch (e) { alert("Chyba při mazání."); }
   };
 
   // 8. Edit Root Object properties
   const handleEditObject = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    
+
     const latVal = fd.get('lat');
     const lngVal = fd.get('lng');
 
@@ -440,20 +453,20 @@ const newLogEntry: LogEntry = {
       lat: latVal ? Number(latVal) : undefined,
       lng: lngVal ? Number(lngVal) : undefined
     };
-    
+
     try {
-        await api.updateObjectRoot(object.id, updates);
-        await reloadObject();
-        setEditObjectModalOpen(false);
+      await api.updateObjectRoot(object.id, updates);
+      await reloadObject();
+      setEditObjectModalOpen(false);
     } catch (e) {
-        alert("Chyba při aktualizaci objektu.");
+      alert("Chyba při aktualizaci objektu.");
     }
   };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-24">
-      <ObjectHeader 
-        object={object} 
+      <ObjectHeader
+        object={object}
         group={getGroupInfo(object.groupId)}
         onOpenLogModal={() => setLogModalOpen(true)}
         onOpenEditModal={() => setEditObjectModalOpen(true)}
@@ -465,32 +478,33 @@ const newLogEntry: LogEntry = {
         <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FolderOpen />} label="Kartotéka" />
         <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} icon={<Users />} label="Kontakty & Info" />
         <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} icon={<Calendar />} label="Plánované" />
-        <TabButton active={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')} icon={<AlertCircle />} label="Úkolníček" /> 
+        <TabButton active={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')} icon={<AlertCircle />} label="Úkolníček" />
         <TabButton active={activeTab === 'log'} onClick={() => setActiveTab('log')} icon={<ClipboardCheck />} label="Deník" />
       </div>
 
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-400">
         {activeTab === 'tech' && (
-          <TechTab 
+          <TechTab
             technologies={object.technologies}
-            onAddTech={() => setTechModalOpen(true)}
+            onAddTech={() => { setEditingTech(null); setTechModalOpen(true); }} // Reset pro přidání
+            onEditTech={(t) => { setEditingTech(t); setTechModalOpen(true); }} // Set pro editaci
             onRemoveTech={removeTechnology}
             onAddBattery={(techId) => setBatteryModalOpen({ techId })}
             onRemoveBattery={removeBattery}
             onStatusChange={handleBatteryStatusChange}
           />
         )}
-        
+
         {activeTab === 'files' && (
-            <FilesTab 
-                files={object.files || []} 
-                onAddFile={addFileToObject}
-                onRemoveFile={removeFileFromObject}
-            />
+          <FilesTab
+            files={object.files || []}
+            onAddFile={addFileToObject}
+            onRemoveFile={removeFileFromObject}
+          />
         )}
 
         {activeTab === 'info' && (
-          <InfoTab 
+          <InfoTab
             contacts={object.contacts}
             internalNotes={object.internalNotes}
             onAddContact={() => setContactModalOpen(true)}
@@ -499,7 +513,7 @@ const newLogEntry: LogEntry = {
         )}
 
         {activeTab === 'events' && (
-          <EventsTab 
+          <EventsTab
             events={object.scheduledEvents}
             pendingIssues={object.pendingIssues || []}
             onAddEvent={() => { setEditingEvent(null); setEventModalOpen(true); }}
@@ -511,34 +525,34 @@ const newLogEntry: LogEntry = {
         )}
 
         {activeTab === 'log' && (
-          <LogTab 
+          <LogTab
             entries={object.logEntries}
             templates={templates}
           />
         )}
 
         {activeTab === 'tasks' && (
-          <TasksTab 
-              tasks={object.tasks || []}
-              onAddTask={() => { setEditingTask(null); setTaskModalOpen(true); }}
-              onEditTask={(t) => { setEditingTask(t); setTaskModalOpen(true); }}
-              onRemoveTask={removeTask}
-              onQuickStatusChange={quickTaskStatusChange}
+          <TasksTab
+            tasks={object.tasks || []}
+            onAddTask={() => { setEditingTask(null); setTaskModalOpen(true); }}
+            onEditTask={(t) => { setEditingTask(t); setTaskModalOpen(true); }}
+            onRemoveTask={removeTask}
+            onQuickStatusChange={quickTaskStatusChange}
           />
         )}
       </div>
 
-      <ObjectModals 
+      <ObjectModals
         // Tech
         isTechModalOpen={isTechModalOpen}
         setTechModalOpen={setTechModalOpen}
         onAddTechnology={handleAddTechnology}
-        
+        editingTech={editingTech} // Předání state do modalu
         // Battery
         isBatteryModalOpen={isBatteryModalOpen}
         setBatteryModalOpen={setBatteryModalOpen}
         onAddBattery={handleAddBattery}
-        
+
         // Contact
         isContactModalOpen={isContactModalOpen}
         setContactModalOpen={setContactModalOpen}
@@ -566,7 +580,7 @@ const newLogEntry: LogEntry = {
         logFormData={logFormData}
         setLogFormData={setLogFormData}
         onAddLogEntry={handleAddLogEntry}
-        
+
         // Tasks
         isTaskModalOpen={isTaskModalOpen}
         setTaskModalOpen={setTaskModalOpen}
@@ -578,8 +592,8 @@ const newLogEntry: LogEntry = {
 };
 
 const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: React.ReactNode, label: string }> = ({ active, onClick, icon, label }) => (
-  <button 
-    onClick={onClick} 
+  <button
+    onClick={onClick}
     className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap ${active ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-white shadow-sm ring-1 ring-gray-200/50 dark:ring-slate-700' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
   >
     {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-4 h-4' })}

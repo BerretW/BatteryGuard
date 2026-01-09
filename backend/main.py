@@ -170,7 +170,22 @@ async def add_technology(obj_id: str, tech: dict = Body(...), user: dict = Depen
     # Atomický $push
     await db.objects.update_one({"id": obj_id}, {"$push": {"technologies": tech}})
     return {"status": "added"}
-
+@app.patch("/objects/{obj_id}/technologies/{tech_id}")
+async def update_technology(obj_id: str, tech_id: str, updates: dict = Body(...), user: dict = Depends(get_current_user)):
+    # Sestavení dat pro update pomocí pozičního operátoru
+    # Klíče musí být ve formátu "technologies.$[elem].field"
+    set_data = {f"technologies.$[elem].{k}": v for k, v in updates.items()}
+    
+    result = await db.objects.update_one(
+        {"id": obj_id},
+        {"$set": set_data},
+        array_filters=[{"elem.id": tech_id}]
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(404, "Object or technology not found")
+        
+    return {"status": "updated"}
 @app.delete("/objects/{obj_id}/technologies/{tech_id}")
 async def remove_technology(obj_id: str, tech_id: str, user: dict = Depends(get_current_user)):
     # Atomický $pull

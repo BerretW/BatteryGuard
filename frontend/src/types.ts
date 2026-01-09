@@ -7,10 +7,10 @@ export enum BatteryStatus {
 }
 
 export enum TechType {
-  EPS = 'Elektrická požární signalizace (EPS)',
-  EZS = 'Elektronická zabezpočovací signalizace (EZS)',
-  CCTV = 'Kamerový systém (CCTV)',
-  SKV = 'Systém kontroly vstupu (SKV)',
+  EPS = 'EPS - Elektrická požární signalizace (EPS)',
+  EZS = 'PZTS - Elektronická zabezpočovací signalizace (EZS)',
+  CCTV = 'CCTV - Kamerový systém (CCTV)',
+  SKV = 'SKV - Systém kontroly vstupu (SKV)',
   OTHER = 'Jiný systém'
 }
 
@@ -75,7 +75,8 @@ export interface Battery {
 export interface Technology {
   id: string;
   name: string;
-  type: TechType;
+  type: TechType;          // Např. EPS
+  deviceType: DeviceType;  // Např. Napájecí zdroj <--- NOVÉ POLE
   location: string;
   batteries: Battery[];
 }
@@ -193,4 +194,11 @@ export interface ObjectGroup {
   color?: string;
   defaultBatteryLifeMonths?: number; // Životnost v měsících (např. 24, 36)
   notificationLeadTimeWeeks?: number; // Upozornit X týdnů předem
+}
+export enum DeviceType {
+  PANEL = 'Ústředna',
+  UNIT = 'Řídící jednotka',
+  SOURCE_MAIN = 'Napájecí zdroj',
+  SOURCE_BOOSTER = 'Posilový zdroj',
+  OTHER_DEVICE = 'Jiné zařízení'
 }

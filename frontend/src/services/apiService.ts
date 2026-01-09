@@ -24,7 +24,7 @@ export interface IApiService {
   addTask(objId: string, task: any): Promise<void>;
   updateTask(objId: string, taskId: string, updates: any): Promise<void>;
   removeTask(objId: string, taskId: string): Promise<void>;
-
+  updateTechnology(objId: string, techId: string, updates: any): Promise<void>;
   // Generické kolekce (Files, Contacts, Events, PendingIssues)
   addToCollection(objId: string, collection: string, item: any): Promise<void>;
   removeFromCollection(objId: string, collection: string, itemId: string): Promise<void>;
@@ -86,7 +86,9 @@ class ApiService implements IApiService {
   // Technologies
   async addTechnology(objId: string, tech: any): Promise<void> { return this.request(`/objects/${objId}/technologies`, 'POST', tech); }
   async removeTechnology(objId: string, techId: string): Promise<void> { return this.request(`/objects/${objId}/technologies/${techId}`, 'DELETE'); }
-
+  async updateTechnology(objId: string, techId: string, updates: any): Promise<void> { 
+      return this.request(`/objects/${objId}/technologies/${techId}`, 'PATCH', updates); 
+  }
   // Batteries
   async addBattery(objId: string, techId: string, battery: any): Promise<void> { return this.request(`/objects/${objId}/technologies/${techId}/batteries`, 'POST', battery); }
   async updateBatteryStatus(objId: string, techId: string, batId: string, status: BatteryStatus, extraData: any = {}): Promise<void> {

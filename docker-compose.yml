@@ -19,6 +19,7 @@ services:
     environment:
       - MONGO_URL=mongodb://mongo:27017
       - UPLOAD_DIR=/app/uploads  # Přidáme proměnnou
+      - PUBLIC_URL=http://battery.appartus.cz 
       - SECRET_KEY=${SECRET_KEY:-vas_tajny_klic_pro_jwt_tokeny_zmente_v_produkci}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@appartus.cz}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-zmente_tohle_heslo}

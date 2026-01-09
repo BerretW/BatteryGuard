@@ -17,6 +17,11 @@ import io
 import json
 from bson import ObjectId
 from fastapi.responses import StreamingResponse
+
+import qrcode
+from qrcode.image.styledpil import StyledPilImage
+from qrcode.image.styles.moduledrawers import RoundedModuleDrawer
+
 # --- KONFIGURACE ---
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo:27017")
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey_change_me_in_prod")
@@ -25,7 +30,7 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@appartus.cz")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 
-
+PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost") 
 app = FastAPI(title="BatteryGuard API")
 
 # --- STATIC FILES ---
@@ -466,6 +471,58 @@ async def import_backup(file: UploadFile = File(...), user: dict = Depends(get_c
     except Exception as e:
         print(f"Restore error: {e}")
         raise HTTPException(500, f"Restore failed: {str(e)}")
+# ==========================================
+# --- QR KÓDY ENDPOINT ---
+# ==========================================
+@app.get("/qr/object/{obj_id}")
+# Endpoint je veřejný (nevyžaduje přihlášení), aby šel načíst do <img> tagu
+async def get_object_qr(obj_id: str): 
+    # 1. Ověření, že objekt existuje
+    doc = await db.objects.find_one({"id": obj_id})
+    if not doc: raise HTTPException(404, "Object not found")
+
+    # 2. Sestavení cílové URL na frontend
+    # Frontend používá HashRouter, takže URL vypadá např.: http://localhost/#/object/123
+    target_url = f"{PUBLIC_URL}/#/object/{obj_id}"
+
+    # 3. Generování QR kódu
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H, # Vysoká korekce chyb
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(target_url)
+    qr.make(fit=True)
+
+    # Vytvoření obrázku (použijeme stylovaný pro hezčí vzhled)
+    # --- OPRAVA: TENTO ŘÁDEK ZDE CHYBĚL ---
+    img = qr.make_image(image_factory=StyledPilImage, module_drawer=RoundedModuleDrawer())
+    # --------------------------------------
+
+    # 4. Uložení do paměti (BytesIO) místo na disk
+    img_buffer = io.BytesIO()
+    img.save(img_buffer, format="PNG")
+    img_buffer.seek(0)
+
+    # 5. Odeslání jako streamovaný obrázek se správným kódováním názvu (RFC 5987)
+    from urllib.parse import quote
+    base_name = doc.get('name', 'object').replace(' ', '_')
+    # Odstranění potenciálně problematických znaků pro název souboru
+    safe_name = "".join([c for c in base_name if c.isalnum() or c in ('_', '-')])
+    filename = f"qr_{safe_name}.png"
+    encoded_filename = quote(filename)
+
+    return StreamingResponse(
+        img_buffer, 
+        media_type="image/png",
+        # Použijeme filename* pro UTF-8 podporu
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}"
+        }
+    )
+
+
 # --- STARTUP ---
 @app.on_event("startup")
 async def startup_db_client():

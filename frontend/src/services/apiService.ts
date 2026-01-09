@@ -37,6 +37,8 @@ export interface IApiService {
   saveTemplates(templates: FormTemplate[]): Promise<void>;
   uploadFile(file: File): Promise<{ url: string, filename: string }>;
   getUsers(): Promise<AppUser[]>;
+  downloadBackup(): Promise<void>; // Void, protože to vyvolá download dialog
+  restoreBackup(file: File): Promise<void>;
 }
 
 class ApiService implements IApiService {
@@ -127,6 +129,45 @@ class ApiService implements IApiService {
     });
     if (!res.ok) throw new Error("Upload failed");
     return res.json();
+  }
+  async downloadBackup(): Promise<void> {
+    const token = localStorage.getItem('bg_auth_token')?.replace(/^"(.*)"$/, '$1') || '';
+    
+    // Použijeme fetch s blobem pro stažení souboru
+    const response = await fetch('/api/backup/export', {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!response.ok) throw new Error('Backup download failed');
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup-${new Date().toISOString().slice(0,10)}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async restoreBackup(file: File): Promise<void> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('bg_auth_token')?.replace(/^"(.*)"$/, '$1') || '';
+    
+    const res = await fetch('/api/backup/import', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }, // Content-Type se nastaví automaticky s boundary
+        body: formData
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Restore failed");
+    }
   }
   async getUsers(): Promise<AppUser[]> { return this.request('/users'); }
 }

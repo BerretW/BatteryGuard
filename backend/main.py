@@ -12,7 +12,11 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from pydantic import BaseModel
 import requests
-
+import zipfile
+import io
+import json
+from bson import ObjectId
+from fastapi.responses import StreamingResponse
 # --- KONFIGURACE ---
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo:27017")
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey_change_me_in_prod")
@@ -59,6 +63,15 @@ class FormTemplateModel(BaseModel):
     fields: List[Dict[str, Any]]
 
 # --- HELPERS ---
+# --- JSON HELPER ---
+class JSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, ObjectId):
+            return str(o)
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return json.JSONEncoder.default(self, o)
+    
 def fix_mongo_id(document: dict):
     if not document: return None
     if "_id" in document:
@@ -328,7 +341,131 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_cur
         return {"url": f"/uploads/{name}", "filename": file.filename}
     except Exception as e:
         raise HTTPException(500, f"Upload error: {e}")
+# --- BACKUP & RESTORE ---
 
+@app.get("/backup/export")
+async def export_backup(user: dict = Depends(get_current_admin)):
+    # 1. Stažení dat z DB
+    data = {
+        "objects": [fix_mongo_id(d) async for d in db.objects.find({})],
+        "groups": [fix_mongo_id(d) async for d in db.groups.find({})],
+        "templates": [fix_mongo_id(d) async for d in db.templates.find({})],
+        "users": [fix_mongo_id(d) async for d in db.users.find({})],
+    }
+
+    # 2. Vytvoření ZIPu v paměti
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        # A) Uložení JSON dat
+        zip_file.writestr("data.json", json.dumps(data, cls=JSONEncoder, indent=2))
+        
+        # B) Uložení nahraných souborů (uploads složka)
+        if os.path.exists(UPLOAD_DIR):
+            for root, dirs, files in os.walk(UPLOAD_DIR):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    # Uložíme do zipu pod cestou uploads/nazev_souboru
+                    zip_file.write(file_path, os.path.join("uploads", file))
+
+    zip_buffer.seek(0)
+    
+    # 3. Odeslání souboru
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    return StreamingResponse(
+        zip_buffer, 
+        media_type="application/zip", 
+        headers={"Content-Disposition": f"attachment; filename=batteryguard_backup_{timestamp}.zip"}
+    )
+
+@app.post("/backup/import")
+async def import_backup(file: UploadFile = File(...), user: dict = Depends(get_current_admin)):
+    if not file.filename.endswith(".zip"):
+        raise HTTPException(400, "File must be a ZIP archive")
+
+    try:
+        content = await file.read()
+        zip_buffer = io.BytesIO(content)
+        
+        with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+            # 1. Kontrola integrity
+            if "data.json" not in zip_file.namelist():
+                raise HTTPException(400, "Invalid backup: missing data.json")
+
+            # 2. Načtení JSON dat
+            json_data = json.loads(zip_file.read("data.json").decode("utf-8"))
+            
+            # --- MIGRAČNÍ LOGIKA (Zde řešíme změnu struktury) ---
+            # Pokud v záloze chybí nová pole, doplníme je defaulty
+            
+            # A) Objekty
+            objects_to_import = []
+            for obj in json_data.get("objects", []):
+                # Fix: Doplnění technologies.deviceType
+                for tech in obj.get("technologies", []):
+                    if "deviceType" not in tech:
+                        tech["deviceType"] = "Jiné zařízení" # Default pro staré zálohy
+                
+                # Fix: Doplnění tasks
+                if "tasks" not in obj: obj["tasks"] = []
+                
+                # Fix: Doplnění files category
+                for f in obj.get("files", []):
+                    if "category" not in f: f["category"] = "OTHER"
+
+                objects_to_import.append(obj)
+
+            # B) Skupiny (Doplnění nových polí)
+            groups_to_import = []
+            for grp in json_data.get("groups", []):
+                if "defaultBatteryLifeMonths" not in grp: grp["defaultBatteryLifeMonths"] = 24
+                if "notificationLeadTimeWeeks" not in grp: grp["notificationLeadTimeWeeks"] = 4
+                groups_to_import.append(grp)
+
+            # 3. Vymazání současných dat (Full Restore)
+            # Pokud chcete jen merge, tyto řádky smažte, ale restore obvykle znamená "vrátit stav"
+            await db.objects.delete_many({})
+            await db.groups.delete_many({})
+            await db.templates.delete_many({})
+            # Users mažeme opatrně - raději nechat admina, nebo přepsat vše kromě aktuálního?
+            # Zde přepíšeme vše, protože restore dělá admin
+            await db.users.delete_many({})
+
+            # 4. Vložení dat
+            if objects_to_import: await db.objects.insert_many(objects_to_import)
+            if groups_to_import: await db.groups.insert_many(groups_to_import)
+            if json_data.get("templates"): await db.templates.insert_many(json_data["templates"])
+            if json_data.get("users"): await db.users.insert_many(json_data["users"])
+
+            # 5. Obnovení souborů
+            # Smažeme staré uploady
+            if os.path.exists(UPLOAD_DIR):
+                for filename in os.listdir(UPLOAD_DIR):
+                    file_path = os.path.join(UPLOAD_DIR, filename)
+                    try:
+                        if os.path.isfile(file_path) or os.path.islink(file_path):
+                            os.unlink(file_path)
+                        elif os.path.isdir(file_path):
+                            shutil.rmtree(file_path)
+                    except Exception as e:
+                        print(f"Failed to delete {file_path}. Reason: {e}")
+            else:
+                os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+            # Extrahujeme nové
+            for member in zip_file.namelist():
+                if member.startswith("uploads/") and not member.endswith("/"):
+                    # member je např "uploads/soubor.jpg", my chceme jen "soubor.jpg" do složky UPLOAD_DIR
+                    filename = os.path.basename(member)
+                    if filename:
+                        target_path = os.path.join(UPLOAD_DIR, filename)
+                        with open(target_path, "wb") as f:
+                            f.write(zip_file.read(member))
+
+        return {"status": "success", "message": "System restored successfully"}
+
+    except Exception as e:
+        print(f"Restore error: {e}")
+        raise HTTPException(500, f"Restore failed: {str(e)}")
 # --- STARTUP ---
 @app.on_event("startup")
 async def startup_db_client():

@@ -5,7 +5,7 @@ import {
 import { BuildingObject, FormTemplate, FormFieldDefinition } from '../types';
 import { getApiService } from '../services/apiService';
 import { authService } from '../services/authService';
-
+import { Download, Upload, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 interface SettingsProps {
   objects: BuildingObject[];
 }
@@ -19,7 +19,8 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
 
   const api = getApiService();
   const currentUser = authService.getCurrentUser();
-
+const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
   // Načtení šablon při startu
   useEffect(() => {
     const loadData = async () => {
@@ -84,6 +85,32 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
       ...editingTemplate,
       fields: editingTemplate.fields.filter(f => f.id !== fieldId)
     });
+  };
+
+  const handleDownloadBackup = async () => {
+    try {
+      await api.downloadBackup();
+    } catch (e) {
+      alert("Chyba při stahování zálohy.");
+    }
+  };
+
+  const handleRestoreBackup = async () => {
+    if (!restoreFile) return;
+    if (!confirm("VAROVÁNÍ: Obnovení ze zálohy PŘEPIŠE všechna současná data! Opravdu pokračovat?")) return;
+    
+    setIsRestoring(true);
+    try {
+      await api.restoreBackup(restoreFile);
+      alert("Systém byl úspěšně obnoven. Stránka se nyní obnoví.");
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+      alert("Chyba při obnově dat. Zkontrolujte soubor zálohy.");
+    } finally {
+      setIsRestoring(false);
+      setRestoreFile(null);
+    }
   };
 
   if (isLoading) {
@@ -277,6 +304,83 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* SEKCE ZÁLOHOVÁNÍ (Jen pro Admina) */}
+      {currentUser?.role === 'ADMIN' && (
+        <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-800 mb-8">
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl text-emerald-600 dark:text-emerald-400">
+                <Database className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-800 dark:text-white">Záloha a Obnovení</h3>
+                <p className="text-sm text-gray-500 dark:text-slate-400">Kompletní záloha databáze a souborů.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* EXPORT */}
+                <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-slate-700 flex flex-col items-center justify-center text-center">
+                    <Download className="w-10 h-10 text-blue-500 mb-3" />
+                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Stáhnout zálohu</h4>
+                    <p className="text-xs text-gray-400 mb-4 max-w-[200px]">
+                        Stáhne ZIP archiv obsahující všechna data a nahrané soubory.
+                    </p>
+                    <button 
+                        onClick={handleDownloadBackup}
+                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2"
+                    >
+                        <Download className="w-4 h-4" /> Exportovat data
+                    </button>
+                </div>
+
+                {/* IMPORT */}
+                <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-slate-700 flex flex-col items-center justify-center text-center">
+                    <Upload className="w-10 h-10 text-amber-500 mb-3" />
+                    <h4 className="font-bold text-gray-800 dark:text-white mb-1">Obnovit ze zálohy</h4>
+                    <p className="text-xs text-gray-400 mb-4 max-w-[200px]">
+                        Nahrajte ZIP soubor. <span className="text-red-500 font-bold">Pozor: Současná data budou přepsána!</span>
+                    </p>
+                    
+                    {!restoreFile ? (
+                        <label className="cursor-pointer px-6 py-3 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 text-gray-700 dark:text-white rounded-xl font-bold text-sm hover:border-blue-400 transition-all flex items-center gap-2">
+                            <Upload className="w-4 h-4" /> Vybrat soubor
+                            <input 
+                                type="file" 
+                                accept=".zip" 
+                                className="hidden" 
+                                onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
+                            />
+                        </label>
+                    ) : (
+                        <div className="flex flex-col gap-3 w-full">
+                            <div className="flex items-center justify-center gap-2 text-sm font-bold text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-900 p-2 rounded-lg">
+                                <CheckCircle className="w-4 h-4 text-green-500" />
+                                {restoreFile.name}
+                            </div>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={handleRestoreBackup}
+                                    disabled={isRestoring}
+                                    className="flex-1 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                >
+                                    {isRestoring ? <RefreshCw className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+                                    {isRestoring ? 'Obnovuji...' : 'Spustit obnovu'}
+                                </button>
+                                <button 
+                                    onClick={() => setRestoreFile(null)}
+                                    disabled={isRestoring}
+                                    className="px-4 py-2 bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-slate-300 rounded-xl font-bold"
+                                >
+                                    Zrušit
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
       )}
     </div>

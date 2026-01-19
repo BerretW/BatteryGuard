@@ -521,7 +521,21 @@ async def get_object_qr(obj_id: str):
             "Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}"
         }
     )
+# --- BATTERY TYPES (Katalog baterií) ---
+@app.get("/battery-types")
+async def get_battery_types(user: dict = Depends(get_current_user)):
+    return [fix_mongo_id(d) async for d in db.battery_types.find({})]
 
+@app.post("/battery-types")
+async def create_battery_type(bt: dict = Body(...), user: dict = Depends(get_current_admin)):
+    if "id" not in bt: bt["id"] = uuid.uuid4().hex
+    await db.battery_types.insert_one(bt)
+    return fix_mongo_id(bt)
+
+@app.delete("/battery-types/{bt_id}")
+async def delete_battery_type(bt_id: str, user: dict = Depends(get_current_admin)):
+    await db.battery_types.delete_one({"id": bt_id})
+    return {"status": "deleted"}
 
 # --- STARTUP ---
 @app.on_event("startup")

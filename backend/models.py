@@ -102,3 +102,10 @@ class UserDB(BaseModel):
     hashed_password: str
     createdAt: str
 
+class BatteryTypeModel(BaseModel):
+    id: str
+    name: str          # Např. "Yuasa NPL 17-12"
+    manufacturer: str  # Např. "Yuasa"
+    capacityAh: float  # 17
+    voltageV: float    # 12
+    technology: Optional[str] = "VRLA" # Volitelné (GEL, AGM...)

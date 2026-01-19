@@ -12,7 +12,8 @@ import {
   Contact,
   RegularEvent,
   PendingIssue,
-  LogEntry
+  LogEntry,
+  BatteryType
 } from '../types';
 import { authService } from '../services/authService';
 const api = getApiService();
@@ -25,6 +26,7 @@ export const QUERY_KEYS = {
   groups: ['groups'],
   templates: ['templates'],
   users: ['users'],
+  batteryTypes: ['batteryTypes'],
 };
 
 // =========================================================================
@@ -68,6 +70,13 @@ export const useUsers = (options?: { enabled?: boolean }) => {
     queryKey: QUERY_KEYS.users,
     queryFn: () => authService.getUsers(),
     ...options,
+  });
+};
+
+export const useBatteryTypes = () => {
+  return useQuery({
+    queryKey: QUERY_KEYS.batteryTypes,
+    queryFn: () => api.getBatteryTypes(),
   });
 };
 // =========================================================================
@@ -181,6 +190,28 @@ export const useRemoveBattery = () => {
     },
   });
 };
+
+
+export const useCreateBatteryType = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (bt: Partial<BatteryType>) => api.createBatteryType(bt),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.batteryTypes });
+    },
+  });
+};
+
+export const useDeleteBatteryType = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteBatteryType(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.batteryTypes });
+    },
+  });
+};
+
 
 // --- 4. Úkoly (Tasks) ---
 

@@ -202,3 +202,12 @@ export enum DeviceType {
   SOURCE_BOOSTER = 'Posilový zdroj',
   OTHER_DEVICE = 'Jiné zařízení'
 }
+
+export interface BatteryType {
+  id: string;
+  name: string;         // Obchodní název
+  manufacturer: string; // Výrobce
+  capacityAh: number;
+  voltageV: number;
+  technology?: string;
+}

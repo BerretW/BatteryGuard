@@ -1,4 +1,4 @@
-import { BuildingObject, ObjectGroup, FormTemplate, AppUser, BatteryStatus } from '../types';
+import { BuildingObject, ObjectGroup, FormTemplate, AppUser, BatteryStatus,BatteryType } from '../types';
 import { authService } from './authService'; 
 const TOKEN_KEY = 'bg_auth_token';
 const BASE_URL = '/api'; 
@@ -39,6 +39,9 @@ export interface IApiService {
   getUsers(): Promise<AppUser[]>;
   downloadBackup(): Promise<void>; // Void, protože to vyvolá download dialog
   restoreBackup(file: File): Promise<void>;
+  getBatteryTypes(): Promise<BatteryType[]>;
+createBatteryType(bt: Partial<BatteryType>): Promise<BatteryType>;
+deleteBatteryType(id: string): Promise<void>;
 }
 
 class ApiService implements IApiService {
@@ -96,7 +99,9 @@ class ApiService implements IApiService {
     return this.request(`/objects/${objId}/technologies/${techId}/batteries/${batId}`, 'PATCH', { status, ...extraData });
   }
   async removeBattery(objId: string, techId: string, batId: string): Promise<void> { return this.request(`/objects/${objId}/technologies/${techId}/batteries/${batId}`, 'DELETE'); }
-
+async getBatteryTypes(): Promise<BatteryType[]> { return this.request('/battery-types'); }
+async createBatteryType(bt: Partial<BatteryType>): Promise<BatteryType> { return this.request('/battery-types', 'POST', bt); }
+async deleteBatteryType(id: string): Promise<void> { return this.request(`/battery-types/${id}`, 'DELETE'); }
   // Logs
   async addLogEntry(objId: string, log: any): Promise<void> { return this.request(`/objects/${objId}/logs`, 'POST', log); }
 

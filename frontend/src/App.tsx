@@ -16,15 +16,23 @@ import {
   Tags,
   Sun,
   Moon,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw // Nová ikona pro loading stav
 } from 'lucide-react';
 
 // Importy typů
-import { BuildingObject, AppUser, ObjectGroup } from './types';
+import { AppUser } from './types';
 
 // Importy služeb
-import { getApiService } from './services/apiService';
 import { authService } from './services/authService';
+
+// Importy React Query Hooků (z našeho nového souboru)
+import { 
+  useObjects, 
+  useGroups, 
+  useUsers, 
+  useAuthorizeUser 
+} from './hooks/useAppData';
 
 // Importy komponent
 import Dashboard from './components/Dashboard';
@@ -40,19 +48,33 @@ import { GlobalTaskList } from './components/GlobalTaskList';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(authService.getCurrentUser());
-  const [objects, setObjects] = useState<BuildingObject[]>([]);
-  const [groups, setGroups] = useState<ObjectGroup[]>([]);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   
+  // --- REACT QUERY DATA FETCHING ---
+  // Data se načtou automaticky. Pokud uděláte změnu kdekoli v appce (mutaci), 
+  // tyto hooky se automaticky obnoví.
+
+  const { 
+    data: objects = [], 
+    isLoading: loadingObjects, 
+    isRefetching: refetchingObjects,
+    refetch: refetchObjects 
+  } = useObjects({ enabled: !!currentUser }); 
+
+  const { 
+    data: groups = [], 
+    isLoading: loadingGroups 
+  } = useGroups({ enabled: !!currentUser });
+
+  const isLoading = loadingObjects || loadingGroups;
+  // ----------------------------------
+
   // Dark mode logic
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark' || 
       (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
   
-  const api = getApiService();
-
   // Effect pro Dark Mode
   useEffect(() => {
     if (isDarkMode) {
@@ -64,41 +86,19 @@ const App: React.FC = () => {
     }
   }, [isDarkMode]);
 
-  // Effect pro načítání dat po přihlášení
- useEffect(() => {
-    // PŘIDANÁ KONTROLA
+  // Effect pro kontrolu konzistence session
+  useEffect(() => {
     const token = localStorage.getItem('bg_auth_token');
+    // Pokud máme usera v paměti, ale chybí token, odhlásíme ho
     if (currentUser && !token) {
-       // Máme usera v paměti, ale nemáme token -> nekonzistentní stav
        handleLogout();
-       return;
     }
-
-    if (!currentUser) {
-      setIsLoading(false);
-      return;
-    }
-    fetchData();
   }, [currentUser]);
-
-  const fetchData = async () => {
-    try {
-      setIsLoading(true);
-      const [objData, groupData] = await Promise.all([
-        api.getObjects(),
-        api.getGroups()
-      ]);
-      setObjects(objData);
-      setGroups(groupData);
-    } catch (error) {
-      console.error("Chyba při načítání dat z API:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleLogin = () => {
     setCurrentUser(authService.getCurrentUser());
+    // Po přihlášení můžeme vynutit načtení dat
+    refetchObjects();
   };
 
   const handleLogout = () => {
@@ -106,22 +106,10 @@ const App: React.FC = () => {
     setCurrentUser(null);
   };
 
-  // --- ZMĚNA: Update už neukládá na server, jen mění UI ---
-  // Komponenty (ObjectDetail, ObjectList) volají API samy a pak zavolají toto pro update UI.
-  const updateLocalObjects = (newObjects: BuildingObject[]) => {
-    setObjects(newObjects);
-  };
-
-  // Skupiny jsou malé, tam můžeme nechat hromadné uložení pro jednoduchost
-  const updateGroups = async (newGroups: ObjectGroup[]) => {
-    setGroups(newGroups);
-    try {
-      await api.saveGroups(newGroups);
-    } catch (error) {
-      console.error("Group save error:", error);
-      alert("Chyba při ukládání skupin na server.");
-    }
-  };
+  // Dummy funkce pro zpětnou kompatibilitu komponent, které ještě vyžadují prop 'setObjects'
+  // V ideálním případě by se props 'setObjects' z komponent (ObjectList, ObjectDetail) odstranily.
+  const noOpSetObjects = () => { console.log("State je spravován React Query"); };
+  const noOpSetGroups = () => { console.log("State je spravován React Query"); };
 
   // 1. Stav: Nepřihlášený uživatel
   if (!currentUser) {
@@ -235,11 +223,13 @@ const App: React.FC = () => {
               
               <div className="flex items-center gap-3">
                 <button 
-                    onClick={() => fetchData()}
-                    className="hidden sm:flex items-center gap-2 px-3 py-2 text-xs font-bold text-blue-600 bg-blue-50 dark:bg-slate-800 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-slate-700 transition"
+                    onClick={() => refetchObjects()}
+                    disabled={refetchingObjects}
+                    className="hidden sm:flex items-center gap-2 px-3 py-2 text-xs font-bold text-blue-600 bg-blue-50 dark:bg-slate-800 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-slate-700 transition disabled:opacity-50"
                     title="Obnovit data ze serveru"
                 >
-                    <Clock className="w-3.5 h-3.5" /> Synchronizovat
+                    <RefreshCw className={`w-3.5 h-3.5 ${refetchingObjects ? 'animate-spin' : ''}`} /> 
+                    {refetchingObjects ? 'Synchronizuji...' : 'Synchronizovat'}
                 </button>
                 <button 
                     onClick={() => setIsDarkMode(!isDarkMode)}
@@ -262,23 +252,23 @@ const App: React.FC = () => {
               <Routes>
                 <Route path="/" element={<Dashboard objects={objects} />} />
                 
-                {/* Předáváme updateLocalObjects - komponenty už samy volají API */}
-                <Route path="/objects" element={<ObjectList objects={objects} setObjects={updateLocalObjects} groups={groups} />} />
-                <Route path="/object/:id" element={<ObjectDetail objects={objects} setObjects={updateLocalObjects} groups={groups} />} />
+                {/* Předáváme noOp funkce pro kompatibilitu, pokud komponenty očekávají props */}
+                <Route path="/objects" element={<ObjectList objects={objects} setObjects={noOpSetObjects} groups={groups} />} />
+                <Route path="/object/:id" element={<ObjectDetail objects={objects} setObjects={noOpSetObjects} groups={groups} />} />
                 
-                <Route path="/groups" element={<GroupManagement groups={groups} setGroups={updateGroups} objects={objects} />} />
+                <Route path="/groups" element={<GroupManagement groups={groups} setGroups={noOpSetGroups} objects={objects} />} />
                 <Route path="/map" element={<MapView objects={objects} />} />
                 <Route path="/calendar" element={<CalendarView objects={objects} />} />
                 <Route 
-  path="/maintenance" 
-  element={
-    <MaintenancePlanner 
-      objects={objects} 
-      setObjects={updateLocalObjects} 
-      groups={groups} // <--- TOTO JE NUTNÉ PŘIDAT
-    />
-  } 
-/>
+                  path="/maintenance" 
+                  element={
+                    <MaintenancePlanner 
+                      objects={objects} 
+                      setObjects={noOpSetObjects} 
+                      groups={groups} 
+                    />
+                  } 
+                />
                 <Route path="/settings" element={<Settings objects={objects} />} />
                 
                 <Route path="/users" element={
@@ -295,94 +285,83 @@ const App: React.FC = () => {
   );
 };
 
-// --- User Management (Admin) ---
+// --- User Management (Admin) - Refaktorováno pro React Query ---
 const UserManagement: React.FC = () => {
-  const [users, setUsers] = useState<AppUser[]>([]);
-  const [loading, setLoading] = useState(false);
   const current = authService.getCurrentUser();
-
-  useEffect(() => {
-    
-    const fetchUsers = async () => {
-        try {
-            const apiUsers = await authService.getUsers();
-            setUsers(apiUsers);
-        } catch (e) {
-            console.error("Failed to load users", e);
-        }
-    };
-    fetchUsers();
-  }, []);
+  
+  // Použití hooku pro načtení uživatelů
+  const { data: users = [], isLoading, isError } = useUsers();
+  
+  // Použití hooku pro mutaci (autorizaci)
+  const authorizeMutation = useAuthorizeUser();
 
   if (current?.role !== 'ADMIN') {
     return <div className="p-10 text-center text-red-500 font-bold">Nemáte oprávnění k této sekci.</div>;
   }
 
-  const toggleAuth = async (userId: string, isAuth: boolean, role: string) => {
-    setLoading(true);
-    try {
-        await authService.authorizeUser(userId, role, isAuth);
-        const updatedUsers = await authService.getUsers();
-        setUsers(updatedUsers);
-    } catch (e) {
-        alert("Chyba při změně oprávnění");
-    } finally {
-        setLoading(false);
-    }
+  const toggleAuth = (userId: string, isAuth: boolean, role: string) => {
+      authorizeMutation.mutate({ userId, role, authorized: isAuth });
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Správa uživatelů</h2>
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 dark:bg-slate-800 border-b border-gray-100 dark:border-slate-800">
-            <tr>
-              <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Uživatel</th>
-              <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Role</th>
-              <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Stav</th>
-              <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Akce</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
-            {users.map(u => (
-              <tr key={u.id}>
-                <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
-                    {u.name} 
-                    <div className="font-normal text-gray-400 text-xs">{u.email}</div>
-                </td>
-                <td className="px-6 py-4 capitalize text-gray-600 dark:text-slate-400">{u.role}</td>
-                <td className="px-6 py-4">
-                    {u.isAuthorized 
-                        ? <span className="text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded text-xs font-bold">Aktivní</span> 
-                        : <span className="text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded text-xs font-bold">Čeká</span>
-                    }
-                </td>
-                <td className="px-6 py-4">
-                  {u.id !== current.id && (
-                    <button 
-                        onClick={() => toggleAuth(u.id, !u.isAuthorized, u.role)} 
-                        disabled={loading}
-                        className={`font-bold hover:underline ${u.isAuthorized ? 'text-red-500' : 'text-blue-600'}`}
-                    >
-                      {u.isAuthorized ? 'Deaktivovat' : 'Autorizovat'}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {users.length === 0 && (
+        {isLoading ? (
+            <div className="p-10 text-center text-gray-500">Načítám uživatele...</div>
+        ) : isError ? (
+            <div className="p-10 text-center text-red-500">Chyba při načítání uživatelů.</div>
+        ) : (
+            <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 dark:bg-slate-800 border-b border-gray-100 dark:border-slate-800">
                 <tr>
-                    <td colSpan={4} className="p-6 text-center text-gray-500">Žádní uživatelé nenalezeni</td>
+                <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Uživatel</th>
+                <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Role</th>
+                <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Stav</th>
+                <th className="px-6 py-4 font-bold text-gray-700 dark:text-slate-300">Akce</th>
                 </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
+                {users.map(u => (
+                <tr key={u.id}>
+                    <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
+                        {u.name} 
+                        <div className="font-normal text-gray-400 text-xs">{u.email}</div>
+                    </td>
+                    <td className="px-6 py-4 capitalize text-gray-600 dark:text-slate-400">{u.role}</td>
+                    <td className="px-6 py-4">
+                        {u.isAuthorized 
+                            ? <span className="text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded text-xs font-bold">Aktivní</span> 
+                            : <span className="text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded text-xs font-bold">Čeká</span>
+                        }
+                    </td>
+                    <td className="px-6 py-4">
+                    {u.id !== current.id && (
+                        <button 
+                            onClick={() => toggleAuth(u.id, !u.isAuthorized, u.role)} 
+                            disabled={authorizeMutation.isPending}
+                            className={`font-bold hover:underline ${u.isAuthorized ? 'text-red-500' : 'text-blue-600'} disabled:opacity-50`}
+                        >
+                        {authorizeMutation.isPending ? 'Ukládám...' : (u.isAuthorized ? 'Deaktivovat' : 'Autorizovat')}
+                        </button>
+                    )}
+                    </td>
+                </tr>
+                ))}
+                {users.length === 0 && (
+                    <tr>
+                        <td colSpan={4} className="p-6 text-center text-gray-500">Žádní uživatelé nenalezeni</td>
+                    </tr>
+                )}
+            </tbody>
+            </table>
+        )}
       </div>
     </div>
   );
 };
 
+// Pomocná komponenta pro Sidebar linky
 const SidebarLink: React.FC<{ to: string, icon: React.ReactNode, label: string, onClick: () => void }> = ({ to, icon, label, onClick }) => (
   <Link to={to} onClick={onClick} className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-slate-800 dark:hover:bg-slate-900 transition-colors text-slate-300 hover:text-white group">
     {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-5 h-5 group-hover:text-blue-400 transition-colors' })}

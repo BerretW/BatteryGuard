@@ -1,5 +1,5 @@
 import { BuildingObject, ObjectGroup, FormTemplate, AppUser, BatteryStatus } from '../types';
-
+import { authService } from './authService'; 
 const TOKEN_KEY = 'bg_auth_token';
 const BASE_URL = '/api'; 
 
@@ -61,8 +61,7 @@ class ApiService implements IApiService {
         body: body ? JSON.stringify(body) : undefined
       });
       if (response.status === 401) {
-        localStorage.removeItem(TOKEN_KEY);
-        window.location.reload(); 
+        authService.logout(); // Toto provede kompletní vyčištění a reload
         throw new Error('Unauthorized');
       }
       if (!response.ok) {

@@ -65,7 +65,15 @@ const App: React.FC = () => {
   }, [isDarkMode]);
 
   // Effect pro načítání dat po přihlášení
-  useEffect(() => {
+ useEffect(() => {
+    // PŘIDANÁ KONTROLA
+    const token = localStorage.getItem('bg_auth_token');
+    if (currentUser && !token) {
+       // Máme usera v paměti, ale nemáme token -> nekonzistentní stav
+       handleLogout();
+       return;
+    }
+
     if (!currentUser) {
       setIsLoading(false);
       return;
@@ -294,6 +302,7 @@ const UserManagement: React.FC = () => {
   const current = authService.getCurrentUser();
 
   useEffect(() => {
+    
     const fetchUsers = async () => {
         try {
             const apiUsers = await authService.getUsers();

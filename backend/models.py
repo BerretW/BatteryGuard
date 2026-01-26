@@ -109,3 +109,11 @@ class BatteryTypeModel(BaseModel):
     capacityAh: float  # 17
     voltageV: float    # 12
     technology: Optional[str] = "VRLA" # Volitelné (GEL, AGM...)
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: EmailStr
+    role: str
+    isAuthorized: bool
+    createdAt: Optional[str] = None

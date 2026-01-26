@@ -1,3 +1,5 @@
+// FILE: frontend/src/App.tsx
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { 
@@ -17,21 +19,25 @@ import {
   Sun,
   Moon,
   CheckCircle2,
-  RefreshCw // Nová ikona pro loading stav
+  RefreshCw, // Nová ikona pro loading stav
+  Plus,      // <--- NOVÁ IKONA
+  Key        // <--- NOVÁ IKONA
 } from 'lucide-react';
 
 // Importy typů
-import { AppUser } from './types';
+import { AppUser, ObjectTask } from './types';
 
 // Importy služeb
 import { authService } from './services/authService';
 
-// Importy React Query Hooků (z našeho nového souboru)
+// Importy React Query Hooků
 import { 
   useObjects, 
   useGroups, 
   useUsers, 
-  useAuthorizeUser 
+  useAuthorizeUser,
+  useCreateUser,         // <--- NOVÉ
+  useUpdateUserPassword  // <--- NOVÉ
 } from './hooks/useAppData';
 
 // Importy komponent
@@ -46,14 +52,109 @@ import CalendarView from './components/CalendarView';
 import GroupManagement from './components/GroupManagement';
 import { GlobalTaskList } from './components/GlobalTaskList';
 
+
+// --- POMOCNÉ KOMPONENTY PRO SPRÁVU UŽIVATELŮ (Musí být definovány zde nebo importovány) ---
+
+// Zjednodušená implementace modálního okna pro UserManagement
+const Modal: React.FC<{
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  isSubmitting: boolean;
+}> = ({ title, children, onClose, isSubmitting }) => (
+  <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl w-full max-w-lg p-8">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-black text-gray-800 dark:text-white">{title}</h2>
+        <button onClick={onClose} disabled={isSubmitting} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400">
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+const UserCreationModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (data: any) => void;
+    isSubmitting: boolean;
+}> = ({ isOpen, onClose, onSubmit, isSubmitting }) => {
+    if (!isOpen) return null;
+    return (
+        <Modal 
+            title="Přidat nového uživatele" 
+            onClose={onClose} 
+            isSubmitting={isSubmitting}
+        >
+             <form onSubmit={(e) => {
+                 e.preventDefault();
+                 const fd = new FormData(e.currentTarget);
+                 onSubmit({
+                     name: fd.get('name'), 
+                     email: fd.get('email'), 
+                     password: fd.get('password'), 
+                     role: fd.get('role')
+                 });
+             }} className="space-y-4">
+                <input name="name" placeholder="Jméno a příjmení" required className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 p-3 rounded-xl dark:text-white" />
+                <input name="email" type="email" placeholder="E-mail" required className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 p-3 rounded-xl dark:text-white" />
+                <input name="password" type="password" placeholder="Heslo" required className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 p-3 rounded-xl dark:text-white" />
+                <select name="role" required className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 p-3 rounded-xl dark:text-white">
+                    <option value="TECHNICIAN">Technik</option>
+                    <option value="ADMIN">Admin</option>
+                </select>
+                <div className="flex gap-4 pt-2">
+                    <button type="button" onClick={onClose} className="flex-1 py-3 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-300 rounded-xl font-bold">Zrušit</button>
+                    <button type="submit" disabled={isSubmitting} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">
+                         {isSubmitting ? 'Vytvářím...' : 'Vytvořit uživatele'}
+                    </button>
+                </div>
+             </form>
+        </Modal>
+    );
+};
+
+const PasswordChangeModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+    isSubmitting: boolean;
+}> = ({ isOpen, onClose, onSubmit, isSubmitting }) => {
+    if (!isOpen) return null;
+    return (
+        <Modal 
+            title="Změna hesla pro uživatele" 
+            onClose={onClose} 
+            isSubmitting={isSubmitting}
+        >
+             <form onSubmit={onSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Nové heslo</label>
+                    <input name="newPassword" type="password" placeholder="Nové heslo" required className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 p-3 rounded-xl dark:text-white" />
+                </div>
+                <div>
+                    <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Potvrdit nové heslo</label>
+                    <input name="confirmPassword" type="password" placeholder="Potvrdit nové heslo" required className="w-full border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 p-3 rounded-xl dark:text-white" />
+                </div>
+                <div className="flex gap-4 pt-2">
+                    <button type="button" onClick={onClose} className="flex-1 py-3 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-300 rounded-xl font-bold">Zrušit</button>
+                    <button type="submit" disabled={isSubmitting} className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-bold hover:bg-amber-700">
+                         {isSubmitting ? 'Měním heslo...' : 'Změnit heslo'}
+                    </button>
+                </div>
+             </form>
+        </Modal>
+    );
+};
+
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(authService.getCurrentUser());
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   
   // --- REACT QUERY DATA FETCHING ---
-  // Data se načtou automaticky. Pokud uděláte změnu kdekoli v appce (mutaci), 
-  // tyto hooky se automaticky obnoví.
-
   const { 
     data: objects = [], 
     isLoading: loadingObjects, 
@@ -107,7 +208,6 @@ const App: React.FC = () => {
   };
 
   // Dummy funkce pro zpětnou kompatibilitu komponent, které ještě vyžadují prop 'setObjects'
-  // V ideálním případě by se props 'setObjects' z komponent (ObjectList, ObjectDetail) odstranily.
   const noOpSetObjects = () => { console.log("State je spravován React Query"); };
   const noOpSetGroups = () => { console.log("State je spravován React Query"); };
 
@@ -285,15 +385,19 @@ const App: React.FC = () => {
   );
 };
 
-// --- User Management (Admin) - Refaktorováno pro React Query ---
+// --- User Management (Admin) - VYLEPŠENO ---
 const UserManagement: React.FC = () => {
   const current = authService.getCurrentUser();
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false); // <--- NOVÉ
+  const [passwordChangeUserId, setPasswordChangeUserId] = useState<string | null>(null); // <--- NOVÉ
   
   // Použití hooku pro načtení uživatelů
   const { data: users = [], isLoading, isError } = useUsers();
   
-  // Použití hooku pro mutaci (autorizaci)
+  // Použití hooků pro mutace
   const authorizeMutation = useAuthorizeUser();
+  const createUserMutation = useCreateUser();             // <--- NOVÉ
+  const updatePasswordMutation = useUpdateUserPassword();  // <--- NOVÉ
 
   if (current?.role !== 'ADMIN') {
     return <div className="p-10 text-center text-red-500 font-bold">Nemáte oprávnění k této sekci.</div>;
@@ -302,10 +406,59 @@ const UserManagement: React.FC = () => {
   const toggleAuth = (userId: string, isAuth: boolean, role: string) => {
       authorizeMutation.mutate({ userId, role, authorized: isAuth });
   };
+  
+  // --- HANDLERY PRO MODAL ---
+  const handleCreateUser = (data: any) => {
+    createUserMutation.mutate(data, {
+        onSuccess: () => {
+            setIsAddUserModalOpen(false);
+            alert(`Uživatel ${data.email} byl vytvořen.`);
+        },
+        onError: (err) => {
+            console.error(err);
+            alert("Chyba při vytváření uživatele. Zkuste jiný e-mail.");
+        }
+    });
+  };
+
+  const handlePasswordChange = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const newPassword = fd.get('newPassword') as string;
+    const confirmPassword = fd.get('confirmPassword') as string;
+    const userId = passwordChangeUserId;
+
+    if (!userId || newPassword !== confirmPassword) {
+        alert("Hesla se neshodují.");
+        return;
+    }
+    
+    updatePasswordMutation.mutate({ userId, newPassword }, {
+        onSuccess: () => {
+            setPasswordChangeUserId(null);
+            alert("Heslo bylo úspěšně změněno.");
+        },
+        onError: (err) => {
+            console.error(err);
+            alert("Chyba při změně hesla.");
+        }
+    });
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Správa uživatelů</h2>
+       <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Users className="w-6 h-6 text-blue-600" /> Správa uživatelů
+            </h2>
+            <button 
+                onClick={() => setIsAddUserModalOpen(true)}
+                className="flex items-center justify-center space-x-2 bg-blue-600 text-white px-5 py-3 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-500/20 font-bold active:scale-95"
+            >
+                <Plus className="w-5 h-5" />
+                <span>Přidat uživatele</span>
+            </button>
+       </div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden">
         {isLoading ? (
             <div className="p-10 text-center text-gray-500">Načítám uživatele...</div>
@@ -335,15 +488,24 @@ const UserManagement: React.FC = () => {
                             : <span className="text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded text-xs font-bold">Čeká</span>
                         }
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 flex items-center gap-2">
                     {u.id !== current.id && (
-                        <button 
-                            onClick={() => toggleAuth(u.id, !u.isAuthorized, u.role)} 
-                            disabled={authorizeMutation.isPending}
-                            className={`font-bold hover:underline ${u.isAuthorized ? 'text-red-500' : 'text-blue-600'} disabled:opacity-50`}
-                        >
-                        {authorizeMutation.isPending ? 'Ukládám...' : (u.isAuthorized ? 'Deaktivovat' : 'Autorizovat')}
-                        </button>
+                        <>
+                            <button 
+                                onClick={() => toggleAuth(u.id, !u.isAuthorized, u.role)} 
+                                disabled={authorizeMutation.isPending}
+                                className={`font-bold hover:underline text-xs px-2 py-1 rounded transition disabled:opacity-50 ${u.isAuthorized ? 'text-red-500 hover:bg-red-50' : 'text-blue-600 hover:bg-blue-50'}`}
+                            >
+                            {u.isAuthorized ? 'Deaktivovat' : 'Autorizovat'}
+                            </button>
+                            <button
+                                onClick={() => setPasswordChangeUserId(u.id)}
+                                className="font-bold hover:underline text-xs px-2 py-1 rounded text-amber-600 hover:bg-amber-50 transition flex items-center gap-1"
+                                title="Změnit heslo"
+                            >
+                                <Key className="w-4 h-4" /> Heslo
+                            </button>
+                        </>
                     )}
                     </td>
                 </tr>
@@ -357,6 +519,22 @@ const UserManagement: React.FC = () => {
             </table>
         )}
       </div>
+      
+      {/* 1. Modal pro přidání uživatele */}
+      <UserCreationModal 
+          isOpen={isAddUserModalOpen} 
+          onClose={() => setIsAddUserModalOpen(false)} 
+          onSubmit={handleCreateUser} 
+          isSubmitting={createUserMutation.isPending}
+      />
+
+      {/* 2. Modal pro změnu hesla */}
+      <PasswordChangeModal
+          isOpen={!!passwordChangeUserId}
+          onClose={() => setPasswordChangeUserId(null)}
+          onSubmit={handlePasswordChange}
+          isSubmitting={updatePasswordMutation.isPending}
+      />
     </div>
   );
 };

@@ -112,7 +112,6 @@ async def get_current_admin(user: dict = Depends(get_current_user)):
     return user
 
 # --- AUTH ENDPOINTS (Login/Register/Google) ---
-# ... (Zůstávají stejné jako v původním scriptu, zkráceno pro přehlednost) ...
 @app.post("/auth/login")
 async def login(creds: dict = Body(...)):
     user = await db.users.find_one({"email": creds.get("email")})
@@ -536,6 +535,96 @@ async def create_battery_type(bt: dict = Body(...), user: dict = Depends(get_cur
 async def delete_battery_type(bt_id: str, user: dict = Depends(get_current_admin)):
     await db.battery_types.delete_one({"id": bt_id})
     return {"status": "deleted"}
+
+
+# ==========================================
+# --- USER MANAGEMENT (ADMIN ONLY) ---
+# ==========================================
+
+# 1. Získání všech uživatelů
+@app.get("/users")
+async def get_all_users(user: dict = Depends(get_current_admin)):
+    users = []
+    async for doc in db.users.find({}):
+        # Odstraníme hash hesla z výstupu pro bezpečnost
+        doc.pop("hashed_password", None)
+        users.append(fix_mongo_id(doc))
+    return users
+
+# 2. Vytvoření uživatele (Adminem)
+@app.post("/users")
+async def create_user_admin(req: dict = Body(...), user: dict = Depends(get_current_admin)):
+    # Validace emailu
+    if await db.users.find_one({"email": req.get("email")}):
+        raise HTTPException(400, "User with this email already exists")
+
+    # Heslo - pokud není zadáno, vygenerujeme náhodné (nebo defaultní)
+    raw_password = req.get("password") or "batteryguard123"
+    
+    new_user = {
+        "id": uuid.uuid4().hex,
+        "name": req.get("name", "Neznámý"),
+        "email": req.get("email"),
+        "role": req.get("role", "TECHNICIAN"), # 'ADMIN' nebo 'TECHNICIAN'
+        "isAuthorized": True, # Adminem vytvořený uživatel je rovnou autorizovaný
+        "hashed_password": get_password_hash(raw_password),
+        "createdAt": datetime.utcnow().isoformat()
+    }
+    
+    await db.users.insert_one(new_user)
+    
+    # Vrátíme vytvořeného uživatele bez hesla
+    new_user.pop("hashed_password", None)
+    return fix_mongo_id(new_user)
+
+# 3. Změna hesla jiného uživatele (Adminem)
+@app.patch("/users/{user_id}/password")
+async def admin_change_user_password(user_id: str, body: dict = Body(...), user: dict = Depends(get_current_admin)):
+    new_password = body.get("newPassword")
+    if not new_password:
+        raise HTTPException(400, "New password is required")
+
+    result = await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"hashed_password": get_password_hash(new_password)}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(404, "User not found")
+        
+    return {"status": "password_updated"}
+
+# ==========================================
+# --- USER PROFILE (SELF) ---
+# ==========================================
+
+# 4. Změna vlastního hesla
+@app.patch("/auth/password")
+async def change_self_password(body: dict = Body(...), user: dict = Depends(get_current_user)):
+    current_password = body.get("currentPassword")
+    new_password = body.get("newPassword")
+    
+    if not current_password or not new_password:
+        raise HTTPException(400, "Current and new passwords are required")
+
+    # 1. Ověření starého hesla
+    # Poznámka: 'user' z dependency neobsahuje hash (pokud ho get_current_user filtruje), 
+    # nebo ho obsahuje. V původním kódu get_current_user vrací user objekt z DB.
+    # Musíme si vytáhnout aktuální hash z DB pro jistotu, nebo z objektu user.
+    
+    # Pro jistotu načteme full user objekt i s heslem
+    full_user = await db.users.find_one({"email": user["email"]})
+    if not verify_password(current_password, full_user["hashed_password"]):
+        raise HTTPException(400, "Invalid current password")
+
+    # 2. Uložení nového hesla
+    await db.users.update_one(
+        {"email": user["email"]},
+        {"$set": {"hashed_password": get_password_hash(new_password)}}
+    )
+    
+    return {"status": "password_changed"}
+
 
 # --- STARTUP ---
 @app.on_event("startup")

@@ -424,3 +424,36 @@ export const useAuthorizeUser = () => {
     },
   });
 };
+
+export const useCreateUser = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (user: { name: string, email: string, password?: string, role: 'ADMIN' | 'TECHNICIAN' }) =>
+      api.createUser(user),
+    onSuccess: () => {
+      // Po vytvoření uživatele invalidujeme cache uživatelů
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.users });
+    },
+  });
+};
+
+export const useUpdateUserPassword = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: string, newPassword: string }) =>
+      api.updateUserPassword(userId, newPassword),
+    onSuccess: () => {
+      // Invalidace uživatelů po změně hesla
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.users });
+    },
+  });
+};
+
+export const useUpdateSelfPassword = () => {
+  // Tato mutace neinvaliduje QUERY_KEYS.users, protože se týká jen hesla.
+  // Zde nepotřebujeme queryClient.invalidateQueries.
+  return useMutation({
+    mutationFn: ({ currentPassword, newPassword }: { currentPassword: string, newPassword: string }) =>
+      api.updateSelfPassword(currentPassword, newPassword),
+  });
+};

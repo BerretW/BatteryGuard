@@ -6,7 +6,12 @@ import {
 import { FormTemplate, FormFieldDefinition, BuildingObject } from '../types';
 import { getApiService } from '../services/apiService';
 import { authService } from '../services/authService';
-import { useBatteryTypes, useCreateBatteryType, useDeleteBatteryType } from '../hooks/useAppData';
+import { 
+  useBatteryTypes, 
+  useCreateBatteryType, 
+  useDeleteBatteryType, 
+  useUpdateSelfPassword // <--- NOVÝ IMPORT
+} from '../hooks/useAppData';
 
 interface SettingsProps {
   objects: BuildingObject[];
@@ -23,6 +28,8 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
   // --- STATE PRO ZÁLOHOVÁNÍ ---
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  // --- MUTACE PRO AKTUALIZACI HESLA ---
+  const updateSelfPasswordMutation = useUpdateSelfPassword()
 
   // --- STATE PRO KATALOG BATERIÍ ---
   const { data: batteryTypes = [] } = useBatteryTypes();
@@ -50,6 +57,33 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
     loadData();
   }, []);
 
+  // --- HANDLER PRO ZMĚNU VLASTNÍHO HESLA ---
+  const handleSelfPasswordChange = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const currentPassword = fd.get('currentPassword') as string;
+    const newPassword = fd.get('newPassword') as string;
+    const confirmPassword = fd.get('confirmPassword') as string;
+
+    if (newPassword !== confirmPassword) {
+      alert("Nová hesla se neshodují.");
+      return;
+    }
+    if (!currentPassword || !newPassword) {
+        alert("Vyplňte obě pole hesel.");
+        return;
+    }
+
+    try {
+        await updateSelfPasswordMutation.mutateAsync({ currentPassword, newPassword });
+        alert("Heslo bylo úspěšně změněno.");
+        e.currentTarget.reset();
+    } catch (err) {
+        console.error("Password change error:", err);
+        alert("Změna hesla selhala. Zkontrolujte stávající heslo.");
+    }
+  };
+  
   // --- HANDLERS PRO ŠABLONY ---
   const saveTemplates = async (newTemplates: FormTemplate[]) => {
     try {
@@ -165,7 +199,54 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
           {error}
         </div>
       )}
-
+<div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-800 mt-6">
+    <div className="flex items-center space-x-3 mb-6">
+        <div className="p-3 bg-red-50 dark:bg-red-500/10 rounded-2xl text-red-600 dark:text-red-400">
+            <Settings2 className="w-6 h-6" />
+        </div>
+        <div>
+            <h3 className="text-xl font-bold text-gray-800 dark:text-white">Změna hesla</h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400">Změna vašeho přihlašovacího hesla.</p>
+        </div>
+    </div>
+    
+    <form onSubmit={handleSelfPasswordChange} className="space-y-4 max-w-sm">
+        <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Stávající heslo</label>
+            <input 
+                name="currentPassword" 
+                type="password" 
+                required
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:ring-2 focus:ring-red-500"
+            />
+        </div>
+        <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nové heslo</label>
+            <input 
+                name="newPassword" 
+                type="password" 
+                required
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+        <div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Potvrdit nové heslo</label>
+            <input 
+                name="confirmPassword" 
+                type="password" 
+                required
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+        <button 
+            type="submit" 
+            disabled={updateSelfPasswordMutation.isPending}
+            className="w-full py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-500/20 hover:bg-red-700 active:scale-95 transition flex items-center justify-center gap-2"
+        >
+            {updateSelfPasswordMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Změnit heslo'}
+        </button>
+    </form>
+</div>
       {/* Pouze Admin může spravovat šablony a baterie */}
       {currentUser?.role === 'ADMIN' ? (
         <>

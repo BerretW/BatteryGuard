@@ -1,4 +1,6 @@
-import { BuildingObject, ObjectGroup, FormTemplate, AppUser, BatteryStatus,BatteryType } from '../types';
+// FILE: frontend/src/services/apiService.ts
+
+import { BuildingObject, ObjectGroup, FormTemplate, AppUser, BatteryStatus, BatteryType } from '../types';
 import { authService } from './authService'; 
 const TOKEN_KEY = 'bg_auth_token';
 const BASE_URL = '/api'; 
@@ -11,37 +13,50 @@ export interface IApiService {
   updateObjectRoot(id: string, updates: Partial<BuildingObject>): Promise<void>;
   deleteObject(id: string): Promise<void>;
 
-  // Atomic Arrays
+  // Technologies
   addTechnology(objId: string, tech: any): Promise<void>;
   removeTechnology(objId: string, techId: string): Promise<void>;
+  updateTechnology(objId: string, techId: string, updates: any): Promise<void>;
   
+  // Batteries
   addBattery(objId: string, techId: string, battery: any): Promise<void>;
   updateBatteryStatus(objId: string, techId: string, batId: string, status: BatteryStatus, extraData?: any): Promise<void>;
   removeBattery(objId: string, techId: string, batId: string): Promise<void>;
+  
+  // Battery Types
+  getBatteryTypes(): Promise<BatteryType[]>;
+  createBatteryType(bt: Partial<BatteryType>): Promise<BatteryType>;
+  deleteBatteryType(id: string): Promise<void>;
 
+  // Logs
   addLogEntry(objId: string, log: any): Promise<void>;
   
+  // Tasks
   addTask(objId: string, task: any): Promise<void>;
   updateTask(objId: string, taskId: string, updates: any): Promise<void>;
   removeTask(objId: string, taskId: string): Promise<void>;
-  updateTechnology(objId: string, techId: string, updates: any): Promise<void>;
+
   // Generické kolekce (Files, Contacts, Events, PendingIssues)
   addToCollection(objId: string, collection: string, item: any): Promise<void>;
   removeFromCollection(objId: string, collection: string, itemId: string): Promise<void>;
   updateIssueStatus(objId: string, issueId: string, status: string): Promise<void>;
 
-  // Others
+  // Groups & Templates
   getGroups(): Promise<ObjectGroup[]>;
   saveGroups(groups: ObjectGroup[]): Promise<void>; // Necháme bulk pro zjednodušení UI
   getTemplates(): Promise<FormTemplate[]>;
   saveTemplates(templates: FormTemplate[]): Promise<void>;
+  
+  // Files & Backup
   uploadFile(file: File): Promise<{ url: string, filename: string }>;
-  getUsers(): Promise<AppUser[]>;
   downloadBackup(): Promise<void>; // Void, protože to vyvolá download dialog
   restoreBackup(file: File): Promise<void>;
-  getBatteryTypes(): Promise<BatteryType[]>;
-createBatteryType(bt: Partial<BatteryType>): Promise<BatteryType>;
-deleteBatteryType(id: string): Promise<void>;
+
+  // Users & Auth (Rozšířené)
+  getUsers(): Promise<AppUser[]>;
+  createUser(user: { name: string, email: string, password?: string, role: 'ADMIN' | 'TECHNICIAN' }): Promise<AppUser>;
+  updateUserPassword(userId: string, newPassword: string): Promise<void>;
+  updateSelfPassword(currentPassword: string, newPassword: string): Promise<void>;
 }
 
 class ApiService implements IApiService {
@@ -71,7 +86,12 @@ class ApiService implements IApiService {
         const text = await response.text();
         throw new Error(`API Error ${response.status}: ${text}`);
       }
-      return response.json();
+      // Vrací prázdnou odpověď, pokud Content-Type není JSON
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+          return response.json();
+      }
+      return {};
     } catch (error) {
       console.error(`Request failed: ${method} ${url}`, error);
       throw error;
@@ -93,15 +113,19 @@ class ApiService implements IApiService {
   async updateTechnology(objId: string, techId: string, updates: any): Promise<void> { 
       return this.request(`/objects/${objId}/technologies/${techId}`, 'PATCH', updates); 
   }
+  
   // Batteries
   async addBattery(objId: string, techId: string, battery: any): Promise<void> { return this.request(`/objects/${objId}/technologies/${techId}/batteries`, 'POST', battery); }
   async updateBatteryStatus(objId: string, techId: string, batId: string, status: BatteryStatus, extraData: any = {}): Promise<void> {
     return this.request(`/objects/${objId}/technologies/${techId}/batteries/${batId}`, 'PATCH', { status, ...extraData });
   }
   async removeBattery(objId: string, techId: string, batId: string): Promise<void> { return this.request(`/objects/${objId}/technologies/${techId}/batteries/${batId}`, 'DELETE'); }
-async getBatteryTypes(): Promise<BatteryType[]> { return this.request('/battery-types'); }
-async createBatteryType(bt: Partial<BatteryType>): Promise<BatteryType> { return this.request('/battery-types', 'POST', bt); }
-async deleteBatteryType(id: string): Promise<void> { return this.request(`/battery-types/${id}`, 'DELETE'); }
+  
+  // Battery Types
+  async getBatteryTypes(): Promise<BatteryType[]> { return this.request('/battery-types'); }
+  async createBatteryType(bt: Partial<BatteryType>): Promise<BatteryType> { return this.request('/battery-types', 'POST', bt); }
+  async deleteBatteryType(id: string): Promise<void> { return this.request(`/battery-types/${id}`, 'DELETE'); }
+  
   // Logs
   async addLogEntry(objId: string, log: any): Promise<void> { return this.request(`/objects/${objId}/logs`, 'POST', log); }
 
@@ -121,7 +145,7 @@ async deleteBatteryType(id: string): Promise<void> { return this.request(`/batte
   async getTemplates(): Promise<FormTemplate[]> { return this.request('/templates'); }
   async saveTemplates(templates: FormTemplate[]): Promise<void> { return this.request('/templates', 'POST', templates); }
   
-  // Others
+  // Files & Backup
   async uploadFile(file: File): Promise<{ url: string, filename: string }> {
     const formData = new FormData();
     formData.append('file', file);
@@ -134,6 +158,7 @@ async deleteBatteryType(id: string): Promise<void> { return this.request(`/batte
     if (!res.ok) throw new Error("Upload failed");
     return res.json();
   }
+  
   async downloadBackup(): Promise<void> {
     const token = localStorage.getItem('bg_auth_token')?.replace(/^"(.*)"$/, '$1') || '';
     
@@ -173,7 +198,21 @@ async deleteBatteryType(id: string): Promise<void> { return this.request(`/batte
         throw new Error(text || "Restore failed");
     }
   }
+
+  // Users & Auth (Rozšířené)
   async getUsers(): Promise<AppUser[]> { return this.request('/users'); }
+  
+  async createUser(user: { name: string, email: string, password?: string, role: 'ADMIN' | 'TECHNICIAN' }): Promise<AppUser> {
+    return this.request('/users', 'POST', user);
+  }
+
+  async updateUserPassword(userId: string, newPassword: string): Promise<void> {
+    return this.request(`/users/${userId}/password`, 'PATCH', { newPassword });
+  }
+
+  async updateSelfPassword(currentPassword: string, newPassword: string): Promise<void> {
+    return this.request('/auth/password', 'PATCH', { currentPassword, newPassword });
+  }
 }
 
 export const getApiService = (): IApiService => new ApiService();

@@ -168,6 +168,7 @@ async def update_object_root(obj_id: str, updates: dict = Body(...), user: dict 
     
     if not safe_updates:
         return {"status": "no_changes"}
+    
 
     result = await db.objects.update_one({"id": obj_id}, {"$set": safe_updates})
     if result.matched_count == 0: raise HTTPException(404, "Object not found")

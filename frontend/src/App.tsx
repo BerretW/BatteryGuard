@@ -357,7 +357,7 @@ const App: React.FC = () => {
                 <Route path="/object/:id" element={<ObjectDetail objects={objects} setObjects={noOpSetObjects} groups={groups} />} />
                 
                 <Route path="/groups" element={<GroupManagement groups={groups} setGroups={noOpSetGroups} objects={objects} />} />
-                <Route path="/map" element={<MapView objects={objects} />} />
+                <Route path="/map" element={<MapView objects={objects} groups={groups} />} />
                 <Route path="/calendar" element={<CalendarView objects={objects} />} />
                 <Route 
                   path="/maintenance" 

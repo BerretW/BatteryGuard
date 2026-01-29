@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Database, ClipboardList, Plus, Trash2, Settings2, Check, X, AlertCircle,
   Download, Upload, UploadCloud, RefreshCw, AlertTriangle, CheckCircle, Battery,
-  FileText, Building, Save, Loader2 // <--- Přidané ikony
+  FileText, Building, Save, Loader2, Ruler // <--- Přidané ikony
 } from 'lucide-react';
 import { FormTemplate, FormFieldDefinition, BuildingObject, CompanySettings } from '../types';
 import { getApiService } from '../services/apiService';
@@ -17,7 +17,7 @@ import {
   useCompanySettings,      // <--- NOVÝ HOOK
   useSaveCompanySettings   // <--- NOVÝ HOOK
 } from '../hooks/useAppData';
-
+import { MeasurementDefinition } from '../types'; // Import nového typu
 interface SettingsProps {
   objects: BuildingObject[];
 }
@@ -58,6 +58,23 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
 
   const api = getApiService();
   const currentUser = authService.getCurrentUser();
+
+
+   const [measurementDefs, setMeasurementDefs] = useState<MeasurementDefinition[]>(() => {
+    const saved = localStorage.getItem('measurement_defs');
+    return saved ? JSON.parse(saved) : [
+      { deviceType: 'BATTERY', measurements: ['Napětí na svorkách', 'Vnitřní odpor'] },
+      { deviceType: 'EPS_CENTRAL', measurements: ['Zkouška záložního zdroje', 'Test poplachu'] }
+    ];
+  });
+
+  const saveMeasurementDefs = (defs: MeasurementDefinition[]) => {
+    setMeasurementDefs(defs);
+    localStorage.setItem('measurement_defs', JSON.stringify(defs));
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
+  };
+
 
   // Načtení dat při startu
   useEffect(() => {
@@ -366,7 +383,49 @@ const Settings: React.FC<SettingsProps> = ({ objects }) => {
               )}
           </div>
       </div>
-      
+      {/* --- NOVÁ SEKCE: METODIKA REVIZÍ --- */}
+      {currentUser?.role === 'ADMIN' && (
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-gray-100 dark:border-slate-800 mt-6">
+          <div className="flex items-center space-x-3 mb-6">
+              <div className="p-3 bg-orange-50 dark:bg-orange-500/10 rounded-2xl text-orange-600 dark:text-orange-400">
+                  <Ruler className="w-6 h-6" />
+              </div>
+              <div>
+                  <h3 className="text-xl font-bold text-gray-800 dark:text-white">Metodika měření</h3>
+                  <p className="text-sm text-gray-500 dark:text-slate-400">Definujte, co se měří u jednotlivých typů zařízení.</p>
+              </div>
+          </div>
+
+          <div className="space-y-6">
+              {measurementDefs.map((def, idx) => (
+                  <div key={idx} className="p-4 bg-gray-50 dark:bg-slate-800/50 rounded-2xl border border-gray-100 dark:border-slate-700">
+                      <div className="flex justify-between items-center mb-2">
+                          <h4 className="font-black text-gray-700 dark:text-slate-200 uppercase tracking-widest text-xs">
+                              Typ zařízení: {def.deviceType === 'BATTERY' ? 'AKUMULÁTOR (BATERIE)' : def.deviceType}
+                          </h4>
+                      </div>
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Seznam měřených veličin (oddělené čárkou)</label>
+                          <input 
+                              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 dark:text-white"
+                              value={def.measurements.join(', ')}
+                              onChange={(e) => {
+                                  const newDefs = [...measurementDefs];
+                                  newDefs[idx].measurements = e.target.value.split(',').map(s => s.trim());
+                                  saveMeasurementDefs(newDefs);
+                              }}
+                          />
+                      </div>
+                  </div>
+              ))}
+              
+              <div className="flex gap-2">
+                 {/* Zde by šlo přidat tlačítko pro přidání nového typu zařízení, 
+                     pro teď stačí editace existujících (Battery a Central) */}
+              </div>
+          </div>
+      </div>
+      )}
       {/* --- ADMIN SEKCE --- */}
       {currentUser?.role === 'ADMIN' ? (
         <>

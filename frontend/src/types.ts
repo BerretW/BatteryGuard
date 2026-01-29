@@ -252,6 +252,12 @@ export interface ReportMeasurement {
   unit?: string;
   verdict: string;
   isHeader: boolean;
+  info?: string; // Zde bude např. "Instalováno: 12.1.2023"
+}
+
+export interface MeasurementDefinition {
+  deviceType: string; // Např. "BATTERY", "EPS_CENTRAL", "DETECTOR"
+  measurements: string[]; // Např. ["Napětí (V)", "Zátěžový test"]
 }
 
 export interface ServiceReport {

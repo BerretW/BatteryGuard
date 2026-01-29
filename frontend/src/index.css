@@ -54,3 +54,74 @@
     from { transform: scale(0.95); opacity: 0; }
     to { transform: scale(1); opacity: 1; }
 }
+
+/* =========================================
+   PRINT STYLES - OPRAVA
+   ========================================= */
+
+/* Ve výchozím stavu (na obrazovce) tiskovou oblast skryjeme */
+@media screen {
+    #print-area {
+        display: none !important;
+    }
+}
+
+
+@media print {
+    /* Skryjeme hlavní aplikaci a všechny modály */
+    #root, .modal-backdrop, .modal-wrapper {
+        display: none !important;
+        height: 0;
+        overflow: hidden;
+    }
+
+    /* Zobrazíme tiskovou oblast, která bude přes Portal v body */
+    #print-area {
+        display: block !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background-color: white;
+        z-index: 99999; /* Musí být nejvýš */
+        font-family: Arial, sans-serif; /* Bezpečný font pro tisk */
+        color: black;
+    }
+
+    @page {
+        size: A4;
+        margin: 1cm;
+    }
+
+    /* Vynucení tisku pozadí (šedé hlavičky tabulek atd.) */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Styly pro tiskovou tabulku */
+    .print-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+    
+    .print-table th, .print-table td {
+        border: 1px solid #ccc;
+        padding: 6px;
+        text-align: left;
+    }
+
+    .print-header-bg {
+        background-color: #f0f0f0 !important;
+        font-weight: bold;
+    }
+    
+    .print-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+}

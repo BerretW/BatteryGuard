@@ -770,6 +770,33 @@ async def change_self_password(body: dict = Body(...), user: dict = Depends(get_
     await db.users.update_one({"email": user["email"]}, {"$set": {"hashed_password": get_password_hash(new_password)}})
     return {"status": "password_changed"}
 
+
+from models import MeasurementDefinition # Ujistěte se, že je importováno nahoře
+
+@app.get("/settings/measurements")
+async def get_measurement_settings(user: dict = Depends(get_current_user)):
+    doc = await db.settings.find_one({"id": "measurement_defs"})
+    if not doc:
+        # Defaultní nastavení, pokud v DB nic není
+        return [
+            {"deviceType": "BATTERY", "measurements": ["Napětí (V)", "Kapacitní zkouška", "Vnitřní odpor"]},
+            {"deviceType": "EPS_CENTRAL", "measurements": ["Zkouška záložního zdroje", "Test poplachu"]}
+        ]
+    return doc.get("definitions", [])
+
+@app.post("/settings/measurements")
+async def save_measurement_settings(defs: List[MeasurementDefinition], user: dict = Depends(get_current_user)):
+    # Povolíme úpravu jen adminovi, nebo všem (podle potřeby)
+    if user.get("role") != "ADMIN": raise HTTPException(403, "Only admin")
+    
+    await db.settings.update_one(
+        {"id": "measurement_defs"},
+        {"$set": {"definitions": [d.dict() for d in defs]}},
+        upsert=True
+    )
+    return {"status": "saved"}
+
+
 @app.on_event("startup")
 async def startup_db_client():
     if not await db.users.find_one({}):

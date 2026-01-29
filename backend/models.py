@@ -156,7 +156,8 @@ class ReportMeasurement(BaseModel):
     value: str          # Např. "1,05 ohm"
     unit: Optional[str] = None
     verdict: str        # "Vyhovuje"
-    isHeader: bool = False 
+    isHeader: bool = False
+    info: Optional[str] = None # <--- NOVÉ POLE (pro datum instalace atd.)
 
 class ServiceReport(BaseModel):
     """Datový model pro Servisní zprávu / Revizi"""
@@ -219,3 +220,7 @@ class UserResponse(BaseModel):
     role: str
     isAuthorized: bool
     createdAt: Optional[str] = None
+
+class MeasurementDefinition(BaseModel):
+    deviceType: str       # "BATTERY", "EPS_CENTRAL"
+    measurements: List[str] # ["Napětí", "Kapacita"]

@@ -1,11 +1,13 @@
 // FILE: frontend/src/services/apiService.ts
 
-import { BuildingObject, ObjectGroup, FormTemplate, AppUser, BatteryStatus, BatteryType } from '../types';
+import { BuildingObject, ObjectGroup, FormTemplate, AppUser, BatteryStatus, BatteryType,CompanySettings } from '../types';
 import { authService } from './authService'; 
 const TOKEN_KEY = 'bg_auth_token';
 const BASE_URL = '/api'; 
 
 export interface IApiService {
+  getCompanySettings(): Promise<CompanySettings>;
+  saveCompanySettings(settings: CompanySettings): Promise<void>;
   // Objects - Core
   getObjects(): Promise<BuildingObject[]>;
   getObject(id: string): Promise<BuildingObject>;
@@ -104,7 +106,8 @@ class ApiService implements IApiService {
   }
 
   // --- Implementation ---
-
+async getCompanySettings(): Promise<CompanySettings> { return this.request('/settings/company'); }
+  async saveCompanySettings(settings: CompanySettings): Promise<void> { return this.request('/settings/company', 'POST', settings); }
   // Objects
   async getObjects(): Promise<BuildingObject[]> { return this.request('/objects'); }
   async getObject(id: string): Promise<BuildingObject> { return this.request(`/objects/${id}`); }

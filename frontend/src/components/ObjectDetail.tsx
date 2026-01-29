@@ -424,7 +424,8 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ groups }) => {
       internalNotes: fd.get('internalNotes') as string,
       groupId: fd.get('groupId') as string || undefined,
       lat: latVal ? Number(latVal) : undefined,
-      lng: lngVal ? Number(lngVal) : undefined
+      lng: lngVal ? Number(lngVal) : undefined,
+      technicalDescription: fd.get('technicalDescription') as string, 
     };
 
     updateObjectRootMutation.mutate(

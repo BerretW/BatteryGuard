@@ -13,7 +13,8 @@ import {
   RegularEvent,
   PendingIssue,
   LogEntry,
-  BatteryType
+  BatteryType,
+  CompanySettings
 } from '../types';
 import { authService } from '../services/authService';
 const api = getApiService();
@@ -27,7 +28,28 @@ export const QUERY_KEYS = {
   templates: ['templates'],
   users: ['users'],
   batteryTypes: ['batteryTypes'],
+  companySettings: ['companySettings'],
 };
+
+
+export const useCompanySettings = () => {
+  return useQuery({
+    queryKey: QUERY_KEYS.companySettings,
+    queryFn: () => api.getCompanySettings(),
+  });
+};
+
+// 3. Přidat Mutation (SAVE)
+export const useSaveCompanySettings = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: CompanySettings) => api.saveCompanySettings(settings),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.companySettings });
+    },
+  });
+};
+
 
 // =========================================================================
 // SEKCE A: QUERIES (Načítání dat - GET)

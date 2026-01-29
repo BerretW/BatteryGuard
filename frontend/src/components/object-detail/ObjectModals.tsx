@@ -124,29 +124,29 @@ export const ObjectModals: React.FC<ObjectModalsProps> = (props) => {
       setIsUploading(false);
     }
   };
-const [batForm, setBatForm] = useState({
+  const [batForm, setBatForm] = useState({
     capacityAh: '',
     voltageV: '',
     manufacturer: '', // Toto asi uložíme do serialNumber nebo Notes, protože Battery model nemá manufacturer field (dle types.ts)
     notes: ''
-});
+  });
 
-// Handler pro změnu typu
-const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  // Handler pro změnu typu
+  const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const typeId = e.target.value;
     setSelectedBatteryTypeId(typeId);
-    
+
     const type = batteryTypes.find(t => t.id === typeId);
     if (type) {
-        setBatForm({
-            ...batForm,
-            capacityAh: type.capacityAh.toString(),
-            voltageV: type.voltageV.toString(),
-            // Značku a model uložíme do poznámky, pokud tam nic není, nebo přepíšeme
-            notes: `${type.manufacturer} ${type.name}` 
-        });
+      setBatForm({
+        ...batForm,
+        capacityAh: type.capacityAh.toString(),
+        voltageV: type.voltageV.toString(),
+        // Značku a model uložíme do poznámky, pokud tam nic není, nebo přepíšeme
+        notes: `${type.manufacturer} ${type.name}`
+      });
     }
-};
+  };
   return (
     <>
       {/* 1. Modal: ADD / EDIT TECHNOLOGY */}
@@ -234,135 +234,135 @@ const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
       )}
       {/* 2. Modal: ADD BATTERY */}
       {props.isBatteryModalOpen && (
-<Modal title="Nová baterie" onClose={() => props.setBatteryModalOpen(null)}>
-  <form onSubmit={props.onAddBattery} className="space-y-4">
-    
-    {/* VÝBĚR Z KATALOGU */}
-    <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl mb-4 border border-blue-100 dark:border-blue-900/30">
-        <label className="block text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-2">
-            Rychlý výběr z katalogu
-        </label>
-        <select 
-            className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-blue-200 dark:border-blue-800"
-            value={selectedBatteryTypeId}
-            onChange={handleTypeChange}
-        >
-            <option value="">-- Ruční zadání --</option>
-            {batteryTypes.map(bt => (
-                <option key={bt.id} value={bt.id}>
+        <Modal title="Nová baterie" onClose={() => props.setBatteryModalOpen(null)}>
+          <form onSubmit={props.onAddBattery} className="space-y-4">
+
+            {/* VÝBĚR Z KATALOGU */}
+            <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl mb-4 border border-blue-100 dark:border-blue-900/30">
+              <label className="block text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-2">
+                Rychlý výběr z katalogu
+              </label>
+              <select
+                className="w-full px-4 py-3 bg-white dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500 border border-blue-200 dark:border-blue-800"
+                value={selectedBatteryTypeId}
+                onChange={handleTypeChange}
+              >
+                <option value="">-- Ruční zadání --</option>
+                {batteryTypes.map(bt => (
+                  <option key={bt.id} value={bt.id}>
                     {bt.manufacturer} {bt.name} ({bt.capacityAh}Ah / {bt.voltageV}V)
-                </option>
-            ))}
-        </select>
-    </div>
+                  </option>
+                ))}
+              </select>
+            </div>
 
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-          Kapacita (Ah)
-        </label>
-        <input
-          name="capacityAh"
-          type="number"
-          step="0.1"
-          required
-          value={batForm.capacityAh}
-          onChange={e => setBatForm({...batForm, capacityAh: e.target.value})}
-          className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-      <div>
-        <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-          Napětí (V)
-        </label>
-        <input
-          name="voltageV"
-          type="number"
-          step="0.1"
-          required
-          value={batForm.voltageV}
-          onChange={e => setBatForm({...batForm, voltageV: e.target.value})}
-          className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-    </div>
-    
-    {/* ... Datumy instalace a výměny zůstávají stejné ... */}
-     <div className="grid grid-cols-2 gap-4">
-        <div>
-        <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-            Datum instalace
-        </label>
-        <input
-            name="installDate"
-            type="date"
-            required
-            defaultValue={new Date().toISOString().split('T')[0]}
-            className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        </div>
-        <div>
-        <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-            Příští výměna
-        </label>
-        <input
-            name="nextReplacementDate"
-            type="date"
-            required
-            className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        </div>
-    </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                  Kapacita (Ah)
+                </label>
+                <input
+                  name="capacityAh"
+                  type="number"
+                  step="0.1"
+                  required
+                  value={batForm.capacityAh}
+                  onChange={e => setBatForm({ ...batForm, capacityAh: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                  Napětí (V)
+                </label>
+                <input
+                  name="voltageV"
+                  type="number"
+                  step="0.1"
+                  required
+                  value={batForm.voltageV}
+                  onChange={e => setBatForm({ ...batForm, voltageV: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
 
-    <div>
-      <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-        Sériové číslo
-      </label>
-      <input
-        name="serialNumber"
-        className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-      />
-    </div>
+            {/* ... Datumy instalace a výměny zůstávají stejné ... */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                  Datum instalace
+                </label>
+                <input
+                  name="installDate"
+                  type="date"
+                  required
+                  defaultValue={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                  Příští výměna
+                </label>
+                <input
+                  name="nextReplacementDate"
+                  type="date"
+                  required
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
 
-    {/* Poznámka se předvyplní názvem baterie */}
-    <div>
-        <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-            Poznámka / Typ
-        </label>
-        <input 
-            name="notes"
-            value={batForm.notes}
-            onChange={e => setBatForm({...batForm, notes: e.target.value})}
-            className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Specifikace baterie..."
-        />
-    </div>
+            <div>
+              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                Sériové číslo
+              </label>
+              <input
+                name="serialNumber"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
 
-    <div>
-      <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
-        Stav
-      </label>
-      <select
-        name="status"
-        defaultValue={BatteryStatus.HEALTHY}
-        className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        <option value={BatteryStatus.HEALTHY}>V pořádku (Healthy)</option>
-        <option value={BatteryStatus.WARNING}>Varování (Warning)</option>
-        <option value={BatteryStatus.CRITICAL}>Kritický (Critical)</option>
-        <option value={BatteryStatus.REPLACED}>Vyměněno (Replaced)</option>
-      </select>
-    </div>
-    
-    <button
-      type="submit"
-      className="w-full py-4 bg-green-600 text-white rounded-2xl font-black shadow-xl shadow-green-500/20 active:scale-95 transition-all"
-    >
-      Uložit baterii
-    </button>
-  </form>
-</Modal>
-)}
+            {/* Poznámka se předvyplní názvem baterie */}
+            <div>
+              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                Poznámka / Typ
+              </label>
+              <input
+                name="notes"
+                value={batForm.notes}
+                onChange={e => setBatForm({ ...batForm, notes: e.target.value })}
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Specifikace baterie..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">
+                Stav
+              </label>
+              <select
+                name="status"
+                defaultValue={BatteryStatus.HEALTHY}
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-slate-800 rounded-xl font-bold dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={BatteryStatus.HEALTHY}>V pořádku (Healthy)</option>
+                <option value={BatteryStatus.WARNING}>Varování (Warning)</option>
+                <option value={BatteryStatus.CRITICAL}>Kritický (Critical)</option>
+                <option value={BatteryStatus.REPLACED}>Vyměněno (Replaced)</option>
+              </select>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-4 bg-green-600 text-white rounded-2xl font-black shadow-xl shadow-green-500/20 active:scale-95 transition-all"
+            >
+              Uložit baterii
+            </button>
+          </form>
+        </Modal>
+      )}
 
       {/* 3. Modal: CONTACT */}
       {props.isContactModalOpen && (
@@ -588,14 +588,32 @@ const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
             </div>
             <div>
               <label className="block text-xs font-black uppercase tracking-widest text-gray-400 dark:text-slate-500 mb-2">
-                Interní poznámka
+                Interní poznámka (zabezpečená)
               </label>
               <textarea
                 name="internalNotes"
                 defaultValue={props.object.internalNotes}
-                className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 dark:text-white rounded-2xl outline-none font-bold"
-                rows={5}
+                className="w-full px-5 py-4 bg-gray-50 dark:bg-slate-800 border-2 border-transparent focus:border-blue-500 dark:text-white rounded-2xl outline-none font-bold mb-4"
+                rows={2}
+                placeholder="Kódy, přístupy..."
               ></textarea>
+            </div>
+
+            {/* NOVÉ POLE */}
+            <div>
+              <label className="block text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-2">
+                Technický popis pro revize (Předmět)
+              </label>
+              <textarea
+                name="technicalDescription"
+                defaultValue={props.object.technicalDescription}
+                className="w-full px-5 py-4 bg-blue-50 dark:bg-blue-900/10 border-2 border-transparent focus:border-blue-500 dark:text-white rounded-2xl outline-none font-medium"
+                rows={4}
+                placeholder="Např.: Předmětem zkoušky je ústředna EPS typu BC600 umístěná v 1.PP..."
+              ></textarea>
+              <p className="text-[10px] text-gray-400 mt-1 ml-2">
+                Tento text se automaticky předvyplní do pole "Předmět" při vytváření nové revize.
+              </p>
             </div>
             <button
               type="submit"
@@ -627,8 +645,8 @@ const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
                     key={t.id}
                     onClick={() => props.setSelectedTemplateId(t.id)}
                     className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors border ${props.selectedTemplateId === t.id
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-slate-400 border-gray-200 dark:border-slate-700"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-slate-400 border-gray-200 dark:border-slate-700"
                       }`}
                   >
                     {t.name}
@@ -747,8 +765,8 @@ const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
                 type="submit"
                 disabled={isUploading}
                 className={`w-full py-4 rounded-2xl font-black shadow-xl shadow-indigo-500/20 active:scale-95 transition-all mt-4 flex justify-center items-center gap-2 ${isUploading
-                    ? "bg-indigo-400 cursor-wait"
-                    : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                  ? "bg-indigo-400 cursor-wait"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
                   }`}
               >
                 {isUploading && <Loader2 className="w-5 h-5 animate-spin" />}

@@ -85,6 +85,10 @@ export interface ObjectGroup {
   id: string;
   name: string;
   color?: string;
+  defaultBatteryLifeMonths?: number;
+  notificationLeadTimeWeeks?: number;
+  // NOVÉ:
+  billingInfo?: BillingInfo;
 }
 
 export interface Contact {
@@ -125,6 +129,7 @@ export interface BuildingObject {
   address: string;
   description: string;
   internalNotes?: string;
+  technicalDescription?: string; // Pro revize (např. "Ústředna umístěna v 1.PP...")
   contacts?: Contact[];
   technologies: Technology[];
   logEntries: LogEntry[];
@@ -134,7 +139,7 @@ export interface BuildingObject {
   lat?: number;
   lng?: number;
   files: FileAttachment[];
-  tasks: ObjectTask[]; // <--- PŘIDAT TOTO POLE
+  tasks: ObjectTask[];
 }
 
 export interface AppUser {
@@ -210,4 +215,32 @@ export interface BatteryType {
   capacityAh: number;
   voltageV: number;
   technology?: string;
+}
+
+export interface Address {
+  street: string;
+  city: string;
+  zipCode: string;
+  country?: string;
+}
+
+export interface BillingInfo {
+  name: string;
+  ico: string;
+  dic?: string;
+  address: Address;
+  isVatPayer: boolean;
+}
+
+export interface CompanySettings {
+  id: string;
+  name: string;
+  address: Address;
+  ico: string;
+  dic: string;
+  phone: string;
+  email: string;
+  web?: string;
+  logoUrl?: string;
+  bankAccount?: string;
 }

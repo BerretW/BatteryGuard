@@ -1,18 +1,30 @@
+// FILE: frontend/src/components/GroupManagement.tsx
+
 import React, { useState } from 'react';
-import { Tags, Plus, Trash2, Edit2, Check, X, Palette, AlertTriangle, Lock, Clock, CalendarClock } from 'lucide-react';
+import { Tags, Plus, Trash2, Edit2, X, AlertTriangle, Lock, Clock, CalendarClock, Loader2 } from 'lucide-react';
 import { ObjectGroup, BuildingObject } from '../types';
+import { 
+  useCreateGroup, 
+  useUpdateGroup, 
+  useDeleteGroup 
+} from '../hooks/useAppData';
 
 interface GroupManagementProps {
   groups: ObjectGroup[];
-  setGroups: (groups: ObjectGroup[]) => void;
+  setGroups: (groups: ObjectGroup[]) => void; // Ponecháno pro kompatibilitu
   objects: BuildingObject[];
 }
 
-const GroupManagement: React.FC<GroupManagementProps> = ({ groups, setGroups, objects }) => {
+const GroupManagement: React.FC<GroupManagementProps> = ({ groups, objects }) => {
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
   
+  // --- REACT QUERY MUTATIONS ---
+  const createGroupMutation = useCreateGroup();
+  const updateGroupMutation = useUpdateGroup();
+  const deleteGroupMutation = useDeleteGroup();
+
   // State pro formulář
   const [formData, setFormData] = useState<Partial<ObjectGroup>>({
       name: '',
@@ -23,21 +35,23 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, setGroups, ob
 
   const resetForm = () => setFormData({ name: '', color: '#3b82f6', defaultBatteryLifeMonths: 24, notificationLeadTimeWeeks: 4 });
 
+  // --- HANDLERS ---
+
   const handleAddGroup = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name?.trim()) return;
 
-    const newGroup: ObjectGroup = {
-      id: Math.random().toString(36).substr(2, 9),
+    createGroupMutation.mutate({
       name: formData.name,
       color: formData.color,
       defaultBatteryLifeMonths: Number(formData.defaultBatteryLifeMonths) || 24,
       notificationLeadTimeWeeks: Number(formData.notificationLeadTimeWeeks) || 4
-    };
-
-    setGroups([...groups, newGroup]);
-    setAddModalOpen(false);
-    resetForm();
+    }, {
+      onSuccess: () => {
+        setAddModalOpen(false);
+        resetForm();
+      }
+    });
   };
 
   const startEditing = (group: ObjectGroup) => {
@@ -53,20 +67,29 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, setGroups, ob
 
   const handleUpdateGroup = (id: string) => {
     if (!formData.name?.trim()) return;
-    setGroups(groups.map(g => g.id === id ? { 
-        ...g, 
+    
+    updateGroupMutation.mutate({
+      id,
+      updates: {
         name: formData.name!, 
         color: formData.color,
         defaultBatteryLifeMonths: Number(formData.defaultBatteryLifeMonths),
         notificationLeadTimeWeeks: Number(formData.notificationLeadTimeWeeks)
-    } : g));
-    setEditingGroupId(null);
-    resetForm();
+      }
+    }, {
+      onSuccess: () => {
+        setEditingGroupId(null);
+        resetForm();
+      }
+    });
   };
 
   const confirmDelete = (id: string) => {
-    setGroups(groups.filter(g => g.id !== id));
-    setDeletingGroupId(null);
+    deleteGroupMutation.mutate(id, {
+      onSuccess: () => {
+        setDeletingGroupId(null);
+      }
+    });
   };
 
   return (
@@ -144,7 +167,14 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, setGroups, ob
                     </div>
                     <div className="flex gap-3 justify-end">
                         <button onClick={() => setEditingGroupId(null)} className="px-5 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800">Zrušit</button>
-                        <button onClick={() => handleUpdateGroup(group.id)} className="px-5 py-2.5 bg-green-600 text-white rounded-xl font-bold shadow-lg shadow-green-500/20 hover:bg-green-700">Uložit změny</button>
+                        <button 
+                          onClick={() => handleUpdateGroup(group.id)} 
+                          disabled={updateGroupMutation.isPending}
+                          className="px-5 py-2.5 bg-green-600 text-white rounded-xl font-bold shadow-lg shadow-green-500/20 hover:bg-green-700 flex items-center gap-2"
+                        >
+                          {updateGroupMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                          Uložit změny
+                        </button>
                     </div>
                 </div>
               );
@@ -159,7 +189,13 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, setGroups, ob
                     Opravdu smazat skupinu {group.name}?
                   </p>
                   <div className="flex gap-2 w-full md:w-auto">
-                    <button onClick={() => confirmDelete(group.id)} className="flex-1 md:flex-none px-6 py-2 bg-red-600 text-white rounded-xl font-bold text-sm">Smazat</button>
+                    <button 
+                      onClick={() => confirmDelete(group.id)} 
+                      disabled={deleteGroupMutation.isPending}
+                      className="flex-1 md:flex-none px-6 py-2 bg-red-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+                    >
+                      {deleteGroupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Smazat'}
+                    </button>
                     <button onClick={() => setDeletingGroupId(null)} className="flex-1 md:flex-none px-6 py-2 bg-white text-gray-600 rounded-xl font-bold text-sm border">Zrušit</button>
                   </div>
                 </div>
@@ -190,6 +226,7 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, setGroups, ob
                         onClick={() => { if (assignedCount === 0) setDeletingGroupId(group.id); }}
                         disabled={assignedCount > 0}
                         className={`p-3 rounded-xl transition ${assignedCount > 0 ? 'text-gray-200 dark:text-slate-700 cursor-not-allowed' : 'text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-slate-800'}`}
+                        title={assignedCount > 0 ? "Nelze smazat - skupina má přiřazené objekty" : "Smazat skupinu"}
                     >
                         <Trash2 className="w-5 h-5" />
                     </button>
@@ -228,7 +265,14 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, setGroups, ob
                   <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Barva</label>
                   <input type="color" className="w-full h-16 rounded-2xl cursor-pointer" value={formData.color} onChange={e => setFormData({...formData, color: e.target.value})} />
               </div>
-              <button type="submit" className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl hover:bg-blue-700">Vytvořit skupinu</button>
+              <button 
+                type="submit" 
+                disabled={createGroupMutation.isPending}
+                className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl hover:bg-blue-700 flex items-center justify-center gap-2"
+              >
+                {createGroupMutation.isPending && <Loader2 className="w-5 h-5 animate-spin" />}
+                Vytvořit skupinu
+              </button>
             </form>
           </div>
         </div>

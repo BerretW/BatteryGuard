@@ -57,6 +57,34 @@ export const useGroups = (options?: { enabled?: boolean }) => {
   });
 };
 
+export const useCreateGroup = () => {
+  const queryClient = useQueryClient();
+  const api = getApiService();
+  return useMutation({
+    mutationFn: (group: Partial<ObjectGroup>) => api.createGroup(group),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
+  });
+};
+
+export const useUpdateGroup = () => {
+  const queryClient = useQueryClient();
+  const api = getApiService();
+  return useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<ObjectGroup> }) => 
+      api.updateGroup(id, updates),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
+  });
+};
+
+export const useDeleteGroup = () => {
+  const queryClient = useQueryClient();
+  const api = getApiService();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteGroup(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
+  });
+};
+
 export const useTemplates = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: QUERY_KEYS.templates,

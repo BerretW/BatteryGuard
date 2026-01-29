@@ -321,6 +321,16 @@ async def create_group_or_bulk(data: Any = Body(...), user: dict = Depends(get_c
 async def delete_group(group_id: str, user: dict = Depends(get_current_user)):
     await db.groups.delete_one({"id": group_id})
     return {"status": "deleted"}
+@app.patch("/groups/{group_id}")
+async def update_group(group_id: str, updates: dict = Body(...), user: dict = Depends(get_current_user)):
+    # Ochrana ID (aby se nepřeepsalo)
+    if "id" in updates: del updates["id"]
+    if "_id" in updates: del updates["_id"]
+    
+    result = await db.groups.update_one({"id": group_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(404, "Group not found")
+    return {"status": "updated"}
 
 @app.get("/templates")
 async def get_templates(user: dict = Depends(get_current_user)):

@@ -244,3 +244,35 @@ export interface CompanySettings {
   logoUrl?: string;
   bankAccount?: string;
 }
+
+export interface ReportMeasurement {
+  id: string;
+  label: string;
+  value: string;
+  unit?: string;
+  verdict: string;
+  isHeader: boolean;
+}
+
+export interface ServiceReport {
+  id: string;
+  objectId: string;
+  reportNumber: string;
+  type: string; // 'REVIZE_EZS', etc.
+  status: 'DRAFT' | 'FINAL';
+  
+  dateExecution: string;
+  dateIssue: string;
+  dateNext: string;
+  
+  technicianName: string;
+  technicianCertificate?: string;
+  
+  subject: string;
+  deviceList: string[];
+  measurements: ReportMeasurement[];
+  conclusion: string;
+  
+  createdAt: string;
+  updatedAt: string;
+}

@@ -1,6 +1,6 @@
 // FILE: frontend/src/services/apiService.ts
 
-import { BuildingObject, ObjectGroup, FormTemplate, AppUser, BatteryStatus, BatteryType,CompanySettings } from '../types';
+import { BuildingObject, ObjectGroup, FormTemplate, AppUser, BatteryStatus, BatteryType,CompanySettings,ServiceReport } from '../types';
 import { authService } from './authService'; 
 const TOKEN_KEY = 'bg_auth_token';
 const BASE_URL = '/api'; 
@@ -55,6 +55,13 @@ export interface IApiService {
   getTemplates(): Promise<FormTemplate[]>;
   saveTemplates(templates: FormTemplate[]): Promise<void>;
   
+   getReports(objectId?: string): Promise<ServiceReport[]>;
+  generateReport(objectId: string, type: string): Promise<ServiceReport>;
+  updateReport(reportId: string, updates: Partial<ServiceReport>): Promise<void>;
+  deleteReport(reportId: string): Promise<void>;
+  downloadReportPdf(reportId: string): Promise<void>; // Pro stažení PDF
+
+
   // Files & Backup
   uploadFile(file: File): Promise<{ url: string, filename: string }>;
   downloadBackup(): Promise<void>;
@@ -201,7 +208,44 @@ async getCompanySettings(): Promise<CompanySettings> { return this.request('/set
         throw new Error(text || "Restore failed");
     }
   }
+async getReports(objectId?: string): Promise<ServiceReport[]> {
+    const query = objectId ? `?objectId=${objectId}` : '';
+    return this.request(`/reports${query}`);
+  }
 
+  async generateReport(objectId: string, type: string): Promise<ServiceReport> {
+    return this.request('/reports/generate', 'POST', { objectId, type });
+  }
+
+  async updateReport(reportId: string, updates: Partial<ServiceReport>): Promise<void> {
+    return this.request(`/reports/${reportId}`, 'PUT', updates);
+  }
+
+  async deleteReport(reportId: string): Promise<void> {
+    return this.request(`/reports/${reportId}`, 'DELETE');
+  }
+
+  // Speciální metoda pro stažení souboru (blob)
+  async downloadReportPdf(reportId: string): Promise<void> {
+    const token = localStorage.getItem('bg_auth_token')?.replace(/^"(.*)"$/, '$1') || '';
+    const url = `/api/reports/${reportId}/pdf`;
+    
+    const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) throw new Error('PDF download failed');
+    
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `revize_${reportId}.pdf`; // Nebo lepší název z hlavičky
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  }
   // Users & Auth
   async getUsers(): Promise<AppUser[]> { return this.request('/users'); }
   async createUser(user: { name: string, email: string, password?: string, role: 'ADMIN' | 'TECHNICIAN' }): Promise<AppUser> { return this.request('/users', 'POST', user); }

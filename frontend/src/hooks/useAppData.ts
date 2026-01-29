@@ -14,7 +14,8 @@ import {
   PendingIssue,
   LogEntry,
   BatteryType,
-  CompanySettings
+  CompanySettings,
+  ServiceReport
 } from '../types';
 import { authService } from '../services/authService';
 const api = getApiService();
@@ -29,6 +30,7 @@ export const QUERY_KEYS = {
   users: ['users'],
   batteryTypes: ['batteryTypes'],
   companySettings: ['companySettings'],
+  reports: (objId?: string) => ['reports', objId],
 };
 
 
@@ -50,7 +52,45 @@ export const useSaveCompanySettings = () => {
   });
 };
 
+export const useReports = (objectId?: string) => {
+  return useQuery({
+    queryKey: QUERY_KEYS.reports(objectId),
+    queryFn: () => api.getReports(objectId),
+  });
+};
 
+export const useGenerateReport = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ objectId, type }: { objectId: string, type: string }) => 
+      api.generateReport(objectId, type),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.reports(variables.objectId) });
+    }
+  });
+};
+
+export const useUpdateReport = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }: { id: string, updates: Partial<ServiceReport> }) => 
+      api.updateReport(id, updates),
+    onSuccess: (data, variables) => {
+       // Invalidujeme obecný list i specifický list objektu (pokud bychom ho znali, tady to zjednodušíme)
+       queryClient.invalidateQueries({ queryKey: ['reports'] }); 
+    }
+  });
+};
+
+export const useDeleteReport = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteReport(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+    }
+  });
+};
 // =========================================================================
 // SEKCE A: QUERIES (Načítání dat - GET)
 // =========================================================================

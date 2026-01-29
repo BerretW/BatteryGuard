@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Shield, Users, Calendar, ClipboardCheck, AlertCircle, FolderOpen, Loader2 } from 'lucide-react';
+import { Shield, Users, Calendar, ClipboardCheck, AlertCircle, FolderOpen, Loader2, FileText } from 'lucide-react';
 import {
   BuildingObject, BatteryStatus, Contact, RegularEvent, ObjectGroup,
   TechType, Technology, Battery, LogEntry, FormTemplate, PendingIssue, FileAttachment, ObjectTask
@@ -43,6 +43,7 @@ import { FilesTab } from './object-detail/FilesTab';
 import { TasksTab } from './object-detail/TasksTab';
 import { ObjectModals } from './object-detail/ObjectModals';
 import { DeviceType } from '../types';
+import { ReportsTab } from './object-detail/ReportsTab';
 
 interface ObjectDetailProps {
   // Pro zpětnou kompatibilitu s App.tsx, ale reálně se nepoužívají (data bere hook useObject)
@@ -447,6 +448,7 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ groups }) => {
       <div className="flex p-1.5 bg-gray-100 dark:bg-slate-900 rounded-[1.5rem] border border-gray-200 dark:border-slate-800 overflow-x-auto no-scrollbar">
         <TabButton active={activeTab === 'tech'} onClick={() => setActiveTab('tech')} icon={<Shield />} label="Technologie" />
         <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FolderOpen />} label="Kartotéka" />
+        <TabButton active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} icon={<FileText />} label="Protokoly" />
         <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} icon={<Users />} label="Kontakty & Info" />
         <TabButton active={activeTab === 'events'} onClick={() => setActiveTab('events')} icon={<Calendar />} label="Plánované" />
         <TabButton active={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')} icon={<AlertCircle />} label="Úkolníček" />
@@ -494,7 +496,9 @@ const ObjectDetail: React.FC<ObjectDetailProps> = ({ groups }) => {
             onDeleteIssue={deleteIssue}
           />
         )}
-
+{activeTab === 'reports' && (
+   <ReportsTab objectId={object.id} />
+)}
         {activeTab === 'log' && (
           <LogTab
             entries={object.logEntries}

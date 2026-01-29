@@ -1,26 +1,31 @@
 import os
 import shutil
 import uuid
+import json
+import io
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Depends, status, Header, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from pydantic import BaseModel
-import requests
-import zipfile
-import io
-import json
 from bson import ObjectId
-from fastapi.responses import StreamingResponse
 
 import qrcode
 from qrcode.image.styledpil import StyledPilImage
 from qrcode.image.styles.moduledrawers import RoundedModuleDrawer
+
+# --- IMPORT MODELŮ ---
+# Předpokládáme, že soubor models.py je ve stejné složce jako main.py
+from models import (
+    BuildingObject, ObjectGroup, CompanySettings, ServiceReport, 
+    ReportMeasurement, BillingInfo, Address, UserDB, Technology,
+    Battery, BatteryTypeModel
+)
 
 # --- KONFIGURACE ---
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://mongo:27017")
@@ -30,7 +35,7 @@ ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@appartus.cz")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 
-PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost") 
+PUBLIC_URL = os.getenv("PUBLIC_URL", "http://battery.appartus.cz") 
 app = FastAPI(title="BatteryGuard API")
 
 # --- STATIC FILES ---
@@ -51,21 +56,6 @@ app.add_middleware(
 client = AsyncIOMotorClient(MONGO_URL)
 db = client.batteryguard
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# --- MODELS ---
-# (Zjednodušené modely pro validaci, v praxi lze použít ty z models.py)
-class ObjectGroupModel(BaseModel):
-    id: str
-    name: str
-    color: Optional[str] = None
-    defaultBatteryLifeMonths: Optional[int] = 24  # Výchozí životnost: 2 roky
-    notificationLeadTimeWeeks: Optional[int] = 4  # Výchozí upozornění: 4 týdny předem
-
-class FormTemplateModel(BaseModel):
-    id: str
-    name: str
-    icon: str
-    fields: List[Dict[str, Any]]
 
 # --- HELPERS ---
 # --- JSON HELPER ---
@@ -111,7 +101,9 @@ async def get_current_admin(user: dict = Depends(get_current_user)):
     if user.get("role") != "ADMIN": raise HTTPException(403, "Not admin")
     return user
 
-# --- AUTH ENDPOINTS (Login/Register/Google) ---
+# ==========================================
+# --- AUTH ENDPOINTS ---
+# ==========================================
 @app.post("/auth/login")
 async def login(creds: dict = Body(...)):
     user = await db.users.find_one({"email": creds.get("email")})
@@ -131,7 +123,37 @@ async def register(req: dict = Body(...)):
     await db.users.insert_one(new_user)
     return {"status": "success"}
 
-# --- DATA ENDPOINTS (SINGLE OBJECT CRUD) ---
+# ==========================================
+# --- GLOBÁLNÍ NASTAVENÍ (MOJE FIRMA) ---
+# ==========================================
+
+@app.get("/settings/company")
+async def get_company_settings(user: dict = Depends(get_current_user)):
+    doc = await db.settings.find_one({"id": "global_settings"})
+    if not doc:
+        # Defaultní prázdná struktura
+        return {
+            "id": "global_settings",
+            "name": "Moje Firma s.r.o.",
+            "address": {"street": "", "city": "", "zipCode": ""},
+            "ico": "", "dic": "", "phone": "", "email": ""
+        }
+    return fix_mongo_id(doc)
+
+@app.post("/settings/company")
+async def save_company_settings(settings: CompanySettings, user: dict = Depends(get_current_user)):
+    if user.get("role") != "ADMIN": raise HTTPException(403, "Only admin")
+    
+    await db.settings.update_one(
+        {"id": "global_settings"},
+        {"$set": settings.dict()},
+        upsert=True
+    )
+    return {"status": "saved"}
+
+# ==========================================
+# --- DATA ENDPOINTS (OBJECTS) ---
+# ==========================================
 
 # 1. Objekty - GET ALL
 @app.get("/objects")
@@ -145,31 +167,27 @@ async def get_object(obj_id: str, user: dict = Depends(get_current_user)):
     if not doc: raise HTTPException(404, "Object not found")
     return fix_mongo_id(doc)
 
-# 3. Objekty - CREATE (Single)
+# 3. Objekty - CREATE
 @app.post("/objects")
 async def create_object(obj: dict = Body(...), user: dict = Depends(get_current_user)):
-    # Pokud ID nepošle frontend, vygenerujeme
     if "id" not in obj: obj["id"] = uuid.uuid4().hex
     
-    # Inicializace prázdných polí, pokud chybí
+    # Inicializace polí
     for field in ["technologies", "logEntries", "scheduledEvents", "files", "tasks", "contacts", "pendingIssues"]:
         if field not in obj: obj[field] = []
         
     await db.objects.insert_one(obj)
     return fix_mongo_id(obj)
 
-# 4. Objekty - UPDATE ROOT FIELDS (Single - PATCH)
-# Upravuje pouze kořenové vlastnosti (název, adresa, poznámky, GPS...)
+# 4. Objekty - UPDATE ROOT
 @app.patch("/objects/{obj_id}")
 async def update_object_root(obj_id: str, updates: dict = Body(...), user: dict = Depends(get_current_user)):
-    # Zakážeme úpravu polí přes tento endpoint, aby se nepřeepsala
     protected_fields = ["technologies", "logEntries", "scheduledEvents", "files", "tasks", "contacts", "pendingIssues", "_id", "id"]
     safe_updates = {k: v for k, v in updates.items() if k not in protected_fields}
     
     if not safe_updates:
         return {"status": "no_changes"}
     
-
     result = await db.objects.update_one({"id": obj_id}, {"$set": safe_updates})
     if result.matched_count == 0: raise HTTPException(404, "Object not found")
     return {"status": "updated", "fields": list(safe_updates.keys())}
@@ -180,41 +198,33 @@ async def delete_object(obj_id: str, user: dict = Depends(get_current_user)):
     await db.objects.delete_one({"id": obj_id})
     return {"status": "deleted"}
 
-# --- ATOMICKÉ OPERACE PRO POLE (NESTED ARRAYS) ---
+# ==========================================
+# --- ATOMICKÉ OPERACE (TECHNOLOGIES, ETC.) ---
+# ==========================================
 
 # A) TECHNOLOGIE
 @app.post("/objects/{obj_id}/technologies")
 async def add_technology(obj_id: str, tech: dict = Body(...), user: dict = Depends(get_current_user)):
-    # Atomický $push
     await db.objects.update_one({"id": obj_id}, {"$push": {"technologies": tech}})
     return {"status": "added"}
+
 @app.patch("/objects/{obj_id}/technologies/{tech_id}")
 async def update_technology(obj_id: str, tech_id: str, updates: dict = Body(...), user: dict = Depends(get_current_user)):
-    # Sestavení dat pro update pomocí pozičního operátoru
-    # Klíče musí být ve formátu "technologies.$[elem].field"
     set_data = {f"technologies.$[elem].{k}": v for k, v in updates.items()}
-    
     result = await db.objects.update_one(
-        {"id": obj_id},
-        {"$set": set_data},
-        array_filters=[{"elem.id": tech_id}]
+        {"id": obj_id}, {"$set": set_data}, array_filters=[{"elem.id": tech_id}]
     )
-    
-    if result.matched_count == 0:
-        raise HTTPException(404, "Object or technology not found")
-        
+    if result.matched_count == 0: raise HTTPException(404, "Object or technology not found")
     return {"status": "updated"}
+
 @app.delete("/objects/{obj_id}/technologies/{tech_id}")
 async def remove_technology(obj_id: str, tech_id: str, user: dict = Depends(get_current_user)):
-    # Atomický $pull
     await db.objects.update_one({"id": obj_id}, {"$pull": {"technologies": {"id": tech_id}}})
     return {"status": "removed"}
 
-# B) BATERIE (Vnořené v technologiích)
+# B) BATERIE
 @app.post("/objects/{obj_id}/technologies/{tech_id}/batteries")
 async def add_battery(obj_id: str, tech_id: str, battery: dict = Body(...), user: dict = Depends(get_current_user)):
-    # $push do vnořeného pole pomocí pozičního operátoru nebo arrayFilters.
-    # Zde použijeme query na id objektu A id technologie
     await db.objects.update_one(
         {"id": obj_id, "technologies.id": tech_id},
         {"$push": {"technologies.$.batteries": battery}}
@@ -223,16 +233,9 @@ async def add_battery(obj_id: str, tech_id: str, battery: dict = Body(...), user
 
 @app.patch("/objects/{obj_id}/technologies/{tech_id}/batteries/{bat_id}")
 async def update_battery_status(obj_id: str, tech_id: str, bat_id: str, update: dict = Body(...), user: dict = Depends(get_current_user)):
-    # Atomický update konkrétní baterie uvnitř pole baterií uvnitř pole technologií
-    # Používáme arrayFilters pro přesné zacílení
-    
-    # Sestavení $set objektu (např. "technologies.$[t].batteries.$[b].status": "CRITICAL")
     set_data = {f"technologies.$[t].batteries.$[b].{k}": v for k, v in update.items()}
-    
     await db.objects.update_one(
-        {"id": obj_id},
-        {"$set": set_data},
-        array_filters=[{"t.id": tech_id}, {"b.id": bat_id}]
+        {"id": obj_id}, {"$set": set_data}, array_filters=[{"t.id": tech_id}, {"b.id": bat_id}]
     )
     return {"status": "updated"}
 
@@ -244,13 +247,13 @@ async def remove_battery(obj_id: str, tech_id: str, bat_id: str, user: dict = De
     )
     return {"status": "removed"}
 
-# C) LOGY (Deník)
+# C) LOGY
 @app.post("/objects/{obj_id}/logs")
 async def add_log(obj_id: str, log: dict = Body(...), user: dict = Depends(get_current_user)):
-    await db.objects.update_one({"id": obj_id}, {"$push": {"logEntries": {"$each": [log], "$position": 0}}}) # Nové logy nahoru
+    await db.objects.update_one({"id": obj_id}, {"$push": {"logEntries": {"$each": [log], "$position": 0}}})
     return {"status": "added"}
 
-# D) TASKS (Úkoly)
+# D) TASKS
 @app.post("/objects/{obj_id}/tasks")
 async def add_task(obj_id: str, task: dict = Body(...), user: dict = Depends(get_current_user)):
     await db.objects.update_one({"id": obj_id}, {"$push": {"tasks": task}})
@@ -260,9 +263,7 @@ async def add_task(obj_id: str, task: dict = Body(...), user: dict = Depends(get
 async def update_task(obj_id: str, task_id: str, update: dict = Body(...), user: dict = Depends(get_current_user)):
     set_data = {f"tasks.$[elem].{k}": v for k, v in update.items()}
     await db.objects.update_one(
-        {"id": obj_id},
-        {"$set": set_data},
-        array_filters=[{"elem.id": task_id}]
+        {"id": obj_id}, {"$set": set_data}, array_filters=[{"elem.id": task_id}]
     )
     return {"status": "updated"}
 
@@ -271,8 +272,7 @@ async def remove_task(obj_id: str, task_id: str, user: dict = Depends(get_curren
     await db.objects.update_one({"id": obj_id}, {"$pull": {"tasks": {"id": task_id}}})
     return {"status": "removed"}
 
-# E) FILES & PENDING ISSUES & EVENTS (Generic array handling)
-# Pro zkrácení vytvoříme generickou funkci, ale v produkci je lepší mít explicitní
+# E) KOLEKCE (Files, Issues, Events, Contacts)
 @app.post("/objects/{obj_id}/{collection_name}")
 async def add_to_collection(obj_id: str, collection_name: str, item: dict = Body(...), user: dict = Depends(get_current_user)):
     if collection_name not in ["files", "scheduledEvents", "contacts", "pendingIssues"]:
@@ -295,24 +295,296 @@ async def update_issue_status(obj_id: str, issue_id: str, update: dict = Body(..
     )
     return {"status": "updated"}
 
+# ==========================================
+# --- GENERÁTOR REVIZÍ / PROTOKOLŮ ---
+# ==========================================
 
-# --- OSTATNÍ CRUD (Groups, Templates) ---
-# Skupiny a šablony se mění zřídka, tam můžeme nechat standardní CRUD nebo i bulk save pokud je to nutné,
-# ale pro konzistenci uděláme taky CRUD.
+async def generate_report_number(year: int) -> str:
+    """Vygeneruje číslo revize ve formátu PORADÍ/ROK (např. 52/2025)"""
+    regex = f"/{year}$"
+    last_report = await db.reports.find_one(
+        {"reportNumber": {"$regex": regex}},
+        sort=[("createdAt", -1)]
+    )
+    
+    if last_report:
+        try:
+            last_seq = int(last_report["reportNumber"].split("/")[0])
+            new_seq = last_seq + 1
+        except:
+            new_seq = 1
+    else:
+        new_seq = 1
+        
+    return f"{new_seq}/{year}"
+
+@app.post("/reports/generate")
+async def generate_report_draft(
+    request: dict = Body(...), 
+    user: dict = Depends(get_current_user)
+):
+    """
+    Vygeneruje draft revize na základě dat objektu.
+    Body: { "objectId": "...", "type": "REVIZE_EZS" }
+    """
+    obj_id = request.get("objectId")
+    report_type = request.get("type", "REVIZE_EZS")
+    
+    # 1. Načtení dat (Snapshoty)
+    obj_doc = await db.objects.find_one({"id": obj_id})
+    if not obj_doc: raise HTTPException(404, "Object not found")
+    
+    group_doc = await db.groups.find_one({"id": obj_doc.get("groupId")}) if obj_doc.get("groupId") else None
+    company_doc = await db.settings.find_one({"id": "global_settings"})
+    
+    # Validace nastavení firmy
+    if not company_doc:
+        raise HTTPException(400, "Nejdříve vyplňte údaje o Vaší firmě v nastavení.")
+        
+    supplier_info = CompanySettings(**company_doc)
+    
+    # Fakturační údaje (BillingInfo)
+    customer_info = None
+    if group_doc and "billingInfo" in group_doc:
+        # Pokud skupina má billingInfo
+        customer_info = BillingInfo(**group_doc["billingInfo"])
+    else:
+        # Fallback: Použijeme název skupiny nebo objektu a adresu objektu
+        customer_info = BillingInfo(
+            name=group_doc["name"] if group_doc else obj_doc["name"],
+            ico="",
+            address=Address(street=obj_doc["address"], city="", zipCode="")
+        )
+
+    # 2. Generování čísla
+    now = datetime.now()
+    report_number = await generate_report_number(now.year)
+    
+    # 3. Analýza technologií pro "Instalováno" a "Měření"
+    device_list = []
+    measurements = []
+    
+    technologies = obj_doc.get("technologies", [])
+    
+    # Logika pro EZS (PZTS)
+    if report_type == "REVIZE_EZS":
+        # Výpis hlavních komponent
+        for tech in technologies:
+            device_list.append(f"{tech.get('deviceType', 'Zařízení')}: {tech['name']} ({tech['location']})")
+            
+            # Pokud má baterie, připravíme řádek pro měření
+            for bat in tech.get("batteries", []):
+                measurements.append(ReportMeasurement(
+                    id=str(uuid.uuid4()),
+                    label=f"Napětí AKU - {tech['name']}",
+                    value=f"{bat.get('voltageV', 0)} V", # Předvyplníme nominální
+                    unit="V",
+                    verdict="Vyhovuje"
+                ))
+
+        # Standardní měření pro EZS (vždy přítomné)
+        measurements.insert(0, ReportMeasurement(id=str(uuid.uuid4()), label="Impedance přívodu", value="", unit="Ohm", verdict="Vyhovuje"))
+        measurements.insert(1, ReportMeasurement(id=str(uuid.uuid4()), label="Izolační stav", value="", unit="MOhm", verdict="Vyhovuje"))
+
+    # 4. Předmět revize
+    subject = obj_doc.get("technicalDescription")
+    if not subject:
+        subject = f"Předmětem revize je systém {report_type} instalovaný v objektu {obj_doc['name']}."
+
+    # 5. Sestavení objektu
+    new_report = ServiceReport(
+        id=uuid.uuid4().hex,
+        objectId=obj_id,
+        reportNumber=report_number,
+        type=report_type,
+        status="DRAFT",
+        dateExecution=now.strftime("%Y-%m-%d"),
+        dateIssue=now.strftime("%Y-%m-%d"),
+        dateNext=(now + timedelta(days=365)).strftime("%Y-%m-%d"), # Default 1 rok
+        technicianName=user["name"],
+        technicianCertificate=user.get("certificateNumber", ""),
+        supplierInfo=supplier_info,
+        customerInfo=customer_info,
+        objectAddress=obj_doc["address"],
+        subject=subject,
+        deviceList=device_list,
+        measurements=measurements,
+        defects=[],
+        conclusion="Zařízení je schopno bezpečného provozu.",
+        createdAt=now.isoformat(),
+        updatedAt=now.isoformat()
+    )
+    
+    await db.reports.insert_one(new_report.dict())
+    return new_report
+
+@app.get("/reports")
+async def get_reports(objectId: Optional[str] = None, user: dict = Depends(get_current_user)):
+    query = {}
+    if objectId: query["objectId"] = objectId
+    
+    cursor = db.reports.find(query).sort("createdAt", -1)
+    return [fix_mongo_id(doc) async for doc in cursor]
+
+@app.get("/reports/{report_id}")
+async def get_report(report_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.reports.find_one({"id": report_id})
+    if not doc: raise HTTPException(404, "Report not found")
+    return fix_mongo_id(doc)
+
+@app.put("/reports/{report_id}")
+async def update_report(report_id: str, updates: dict = Body(...), user: dict = Depends(get_current_user)):
+    updates["updatedAt"] = datetime.now().isoformat()
+    
+    # Ochrana: Neměnit ID a číslo
+    if "id" in updates: del updates["id"]
+    if "_id" in updates: del updates["_id"]
+    
+    res = await db.reports.update_one({"id": report_id}, {"$set": updates})
+    if res.matched_count == 0: raise HTTPException(404, "Report not found")
+    return {"status": "updated"}
+
+@app.post("/reports/{report_id}/clone")
+async def clone_report(report_id: str, user: dict = Depends(get_current_user)):
+    """Kopie existující revize (např. z minulého roku)"""
+    old_report = await db.reports.find_one({"id": report_id})
+    if not old_report: raise HTTPException(404, "Report not found")
+    
+    now = datetime.now()
+    new_number = await generate_report_number(now.year)
+    
+    new_report = old_report.copy()
+    new_report["id"] = uuid.uuid4().hex
+    del new_report["_id"]
+    
+    # Aktualizace datumu a čísla
+    new_report["reportNumber"] = new_number
+    new_report["dateExecution"] = now.strftime("%Y-%m-%d")
+    new_report["dateIssue"] = now.strftime("%Y-%m-%d")
+    new_report["dateNext"] = (now + timedelta(days=365)).strftime("%Y-%m-%d")
+    new_report["status"] = "DRAFT"
+    new_report["createdAt"] = now.isoformat()
+    new_report["updatedAt"] = now.isoformat()
+    new_report["technicianName"] = user["name"]
+    
+    # Reset naměřených hodnot (labely zůstanou, hodnoty se smažou)
+    for m in new_report.get("measurements", []):
+        m["value"] = "" 
+        
+    await db.reports.insert_one(new_report)
+    return fix_mongo_id(new_report)
+
+@app.delete("/reports/{report_id}")
+async def delete_report(report_id: str, user: dict = Depends(get_current_user)):
+    await db.reports.delete_one({"id": report_id})
+    return {"status": "deleted"}
+
+@app.get("/reports/{report_id}/pdf")
+async def generate_pdf(report_id: str):
+    doc = await db.reports.find_one({"id": report_id})
+    if not doc: raise HTTPException(404, "Report not found")
+    
+    # Zde by byla integrace WeasyPrint. Prozatím vracíme HTML náhled.
+    # V produkci: import weasyprint ...
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: DejaVu Sans, sans-serif; padding: 40px; color: #333; }}
+            .header {{ text-align: center; border-bottom: 2px solid #333; margin-bottom: 20px; padding-bottom: 10px; }}
+            h1 {{ font-size: 24px; margin: 0; }}
+            h2 {{ font-size: 16px; margin: 5px 0 0; color: #666; }}
+            
+            .section {{ margin-bottom: 20px; }}
+            .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
+            
+            .box {{ border: 1px solid #ddd; padding: 15px; border-radius: 5px; background: #f9f9f9; }}
+            .box h3 {{ margin-top: 0; font-size: 14px; text-transform: uppercase; color: #555; }}
+            
+            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }}
+            th, td {{ border: 1px solid #ccc; padding: 8px; text-align: left; }}
+            th {{ background: #eee; }}
+            
+            .footer {{ margin-top: 50px; border-top: 1px solid #ccc; padding-top: 20px; font-size: 12px; }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>ZPRÁVA O REVIZI {doc.get('type')}</h1>
+            <h2>Číslo protokolu: {doc.get('reportNumber')}</h2>
+        </div>
+        
+        <div class="grid section">
+            <div class="box">
+                <h3>Objednatel</h3>
+                <p><strong>{doc.get('customerInfo', {}).get('name')}</strong></p>
+                <p>IČ: {doc.get('customerInfo', {}).get('ico', '-')}</p>
+                <p>{doc.get('customerInfo', {}).get('address', {}).get('street')}</p>
+            </div>
+            <div class="box">
+                <h3>Dodavatel (Servis)</h3>
+                <p><strong>{doc.get('supplierInfo', {}).get('name')}</strong></p>
+                <p>IČ: {doc.get('supplierInfo', {}).get('ico')}</p>
+                <p>{doc.get('supplierInfo', {}).get('address', {}).get('street')}</p>
+            </div>
+        </div>
+
+        <div class="section">
+             <h3>Předmět revize</h3>
+             <p>{doc.get('subject')}</p>
+        </div>
+
+        <div class="section">
+            <h3>Měření a zkoušky</h3>
+            <table>
+                <tr>
+                    <th style="width: 50%">Měření</th>
+                    <th>Hodnota</th>
+                    <th>Verdikt</th>
+                </tr>
+                {''.join([f"<tr><td>{m['label']}</td><td><strong>{m['value']}</strong> {m.get('unit','')}</td><td>{m['verdict']}</td></tr>" for m in doc.get('measurements', [])])}
+            </table>
+        </div>
+        
+        <div class="section box" style="background: #fff; border-color: #333;">
+            <h3>Celkový posudek</h3>
+            <p style="font-size: 14px; font-weight: bold;">{doc.get('conclusion')}</p>
+        </div>
+
+        <div class="footer grid">
+            <div>
+                Datum provedení: {doc.get('dateExecution')}<br/>
+                Příští revize: <strong>{doc.get('dateNext')}</strong>
+            </div>
+            <div style="text-align: right;">
+                Technik: {doc.get('technicianName')}<br/>
+                Osvědčení: {doc.get('technicianCertificate') or '-'}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return StreamingResponse(io.BytesIO(html_content.encode('utf-8')), media_type="text/html")
+
+# ==========================================
+# --- OSTATNÍ EXISTUJÍCÍ ENDPOINTY ---
+# ==========================================
 
 @app.get("/groups")
 async def get_groups(user: dict = Depends(get_current_user)):
     return [fix_mongo_id(d) async for d in db.groups.find({})]
 
-@app.post("/groups") # Nyní přijímá jeden objekt, ne list (pokud chceme single create)
+@app.post("/groups")
 async def create_group_or_bulk(data: Any = Body(...), user: dict = Depends(get_current_user)):
-    # Zpětná kompatibilita pro bulk save (pokud frontend posílá list)
     if isinstance(data, list):
         await db.groups.delete_many({})
         if data: await db.groups.insert_many(data)
         return {"status": "bulk_saved"}
     else:
-        # Single create
         if "id" not in data: data["id"] = uuid.uuid4().hex
         await db.groups.insert_one(data)
         return {"status": "created"}
@@ -321,15 +593,13 @@ async def create_group_or_bulk(data: Any = Body(...), user: dict = Depends(get_c
 async def delete_group(group_id: str, user: dict = Depends(get_current_user)):
     await db.groups.delete_one({"id": group_id})
     return {"status": "deleted"}
+
 @app.patch("/groups/{group_id}")
 async def update_group(group_id: str, updates: dict = Body(...), user: dict = Depends(get_current_user)):
-    # Ochrana ID (aby se nepřeepsalo)
     if "id" in updates: del updates["id"]
     if "_id" in updates: del updates["_id"]
-    
     result = await db.groups.update_one({"id": group_id}, {"$set": updates})
-    if result.matched_count == 0:
-        raise HTTPException(404, "Group not found")
+    if result.matched_count == 0: raise HTTPException(404, "Group not found")
     return {"status": "updated"}
 
 @app.get("/templates")
@@ -338,13 +608,10 @@ async def get_templates(user: dict = Depends(get_current_user)):
 
 @app.post("/templates")
 async def save_templates(templates: List[dict] = Body(...), user: dict = Depends(get_current_user)):
-    # Templates se editují jen v admin sekci, tam bulk save tolik nevadí, 
-    # ale pro jistotu:
     await db.templates.delete_many({})
     if templates: await db.templates.insert_many(templates)
     return {"status": "saved"}
 
-# --- UPLOAD ---
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     try:
@@ -356,35 +623,30 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_cur
         return {"url": f"/uploads/{name}", "filename": file.filename}
     except Exception as e:
         raise HTTPException(500, f"Upload error: {e}")
-# --- BACKUP & RESTORE ---
 
+# --- BACKUP & RESTORE ---
 @app.get("/backup/export")
 async def export_backup(user: dict = Depends(get_current_admin)):
-    # 1. Stažení dat z DB
     data = {
         "objects": [fix_mongo_id(d) async for d in db.objects.find({})],
         "groups": [fix_mongo_id(d) async for d in db.groups.find({})],
         "templates": [fix_mongo_id(d) async for d in db.templates.find({})],
         "users": [fix_mongo_id(d) async for d in db.users.find({})],
+        "settings": [fix_mongo_id(d) async for d in db.settings.find({})],
+        "reports": [fix_mongo_id(d) async for d in db.reports.find({})],
+        "battery_types": [fix_mongo_id(d) async for d in db.battery_types.find({})]
     }
 
-    # 2. Vytvoření ZIPu v paměti
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        # A) Uložení JSON dat
         zip_file.writestr("data.json", json.dumps(data, cls=JSONEncoder, indent=2))
-        
-        # B) Uložení nahraných souborů (uploads složka)
         if os.path.exists(UPLOAD_DIR):
             for root, dirs, files in os.walk(UPLOAD_DIR):
                 for file in files:
                     file_path = os.path.join(root, file)
-                    # Uložíme do zipu pod cestou uploads/nazev_souboru
                     zip_file.write(file_path, os.path.join("uploads", file))
 
     zip_buffer.seek(0)
-    
-    # 3. Odeslání souboru
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     return StreamingResponse(
         zip_buffer, 
@@ -394,250 +656,120 @@ async def export_backup(user: dict = Depends(get_current_admin)):
 
 @app.post("/backup/import")
 async def import_backup(file: UploadFile = File(...), user: dict = Depends(get_current_admin)):
-    if not file.filename.endswith(".zip"):
-        raise HTTPException(400, "File must be a ZIP archive")
-
+    if not file.filename.endswith(".zip"): raise HTTPException(400, "Must be ZIP")
     try:
         content = await file.read()
         zip_buffer = io.BytesIO(content)
-        
         with zipfile.ZipFile(zip_buffer, "r") as zip_file:
-            # 1. Kontrola integrity
-            if "data.json" not in zip_file.namelist():
-                raise HTTPException(400, "Invalid backup: missing data.json")
-
-            # 2. Načtení JSON dat
+            if "data.json" not in zip_file.namelist(): raise HTTPException(400, "Missing data.json")
             json_data = json.loads(zip_file.read("data.json").decode("utf-8"))
             
-            # --- MIGRAČNÍ LOGIKA (Zde řešíme změnu struktury) ---
-            # Pokud v záloze chybí nová pole, doplníme je defaulty
-            
-            # A) Objekty
-            objects_to_import = []
-            for obj in json_data.get("objects", []):
-                # Fix: Doplnění technologies.deviceType
-                for tech in obj.get("technologies", []):
-                    if "deviceType" not in tech:
-                        tech["deviceType"] = "Jiné zařízení" # Default pro staré zálohy
-                
-                # Fix: Doplnění tasks
-                if "tasks" not in obj: obj["tasks"] = []
-                
-                # Fix: Doplnění files category
-                for f in obj.get("files", []):
-                    if "category" not in f: f["category"] = "OTHER"
-
-                objects_to_import.append(obj)
-
-            # B) Skupiny (Doplnění nových polí)
-            groups_to_import = []
-            for grp in json_data.get("groups", []):
-                if "defaultBatteryLifeMonths" not in grp: grp["defaultBatteryLifeMonths"] = 24
-                if "notificationLeadTimeWeeks" not in grp: grp["notificationLeadTimeWeeks"] = 4
-                groups_to_import.append(grp)
-
-            # 3. Vymazání současných dat (Full Restore)
-            # Pokud chcete jen merge, tyto řádky smažte, ale restore obvykle znamená "vrátit stav"
+            # Vymazání současných dat
             await db.objects.delete_many({})
             await db.groups.delete_many({})
             await db.templates.delete_many({})
-            # Users mažeme opatrně - raději nechat admina, nebo přepsat vše kromě aktuálního?
-            # Zde přepíšeme vše, protože restore dělá admin
             await db.users.delete_many({})
+            await db.settings.delete_many({})
+            await db.reports.delete_many({})
+            await db.battery_types.delete_many({})
 
-            # 4. Vložení dat
-            if objects_to_import: await db.objects.insert_many(objects_to_import)
-            if groups_to_import: await db.groups.insert_many(groups_to_import)
+            # Vložení dat
+            if json_data.get("objects"): await db.objects.insert_many(json_data["objects"])
+            if json_data.get("groups"): await db.groups.insert_many(json_data["groups"])
             if json_data.get("templates"): await db.templates.insert_many(json_data["templates"])
             if json_data.get("users"): await db.users.insert_many(json_data["users"])
+            if json_data.get("settings"): await db.settings.insert_many(json_data["settings"])
+            if json_data.get("reports"): await db.reports.insert_many(json_data["reports"])
+            if json_data.get("battery_types"): await db.battery_types.insert_many(json_data["battery_types"])
 
-            # 5. Obnovení souborů
-            # Smažeme staré uploady
+            # Obnovení souborů
             if os.path.exists(UPLOAD_DIR):
-                for filename in os.listdir(UPLOAD_DIR):
-                    file_path = os.path.join(UPLOAD_DIR, filename)
-                    try:
-                        if os.path.isfile(file_path) or os.path.islink(file_path):
-                            os.unlink(file_path)
-                        elif os.path.isdir(file_path):
-                            shutil.rmtree(file_path)
-                    except Exception as e:
-                        print(f"Failed to delete {file_path}. Reason: {e}")
-            else:
-                os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-            # Extrahujeme nové
+                shutil.rmtree(UPLOAD_DIR)
+            os.makedirs(UPLOAD_DIR, exist_ok=True)
             for member in zip_file.namelist():
                 if member.startswith("uploads/") and not member.endswith("/"):
-                    # member je např "uploads/soubor.jpg", my chceme jen "soubor.jpg" do složky UPLOAD_DIR
                     filename = os.path.basename(member)
                     if filename:
                         target_path = os.path.join(UPLOAD_DIR, filename)
                         with open(target_path, "wb") as f:
                             f.write(zip_file.read(member))
-
-        return {"status": "success", "message": "System restored successfully"}
-
+        return {"status": "success"}
     except Exception as e:
-        print(f"Restore error: {e}")
         raise HTTPException(500, f"Restore failed: {str(e)}")
-# ==========================================
-# --- QR KÓDY ENDPOINT ---
-# ==========================================
+
+# QR KÓD
 @app.get("/qr/object/{obj_id}")
-# Endpoint je veřejný (nevyžaduje přihlášení), aby šel načíst do <img> tagu
 async def get_object_qr(obj_id: str): 
-    # 1. Ověření, že objekt existuje
     doc = await db.objects.find_one({"id": obj_id})
     if not doc: raise HTTPException(404, "Object not found")
-
-    # 2. Sestavení cílové URL na frontend
-    # Frontend používá HashRouter, takže URL vypadá např.: http://localhost/#/object/123
     target_url = f"{PUBLIC_URL}/#/object/{obj_id}"
-
-    # 3. Generování QR kódu
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_H, # Vysoká korekce chyb
-        box_size=10,
-        border=4,
-    )
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=10, border=4)
     qr.add_data(target_url)
     qr.make(fit=True)
-
-    # Vytvoření obrázku (použijeme stylovaný pro hezčí vzhled)
-    # --- OPRAVA: TENTO ŘÁDEK ZDE CHYBĚL ---
     img = qr.make_image(image_factory=StyledPilImage, module_drawer=RoundedModuleDrawer())
-    # --------------------------------------
-
-    # 4. Uložení do paměti (BytesIO) místo na disk
     img_buffer = io.BytesIO()
     img.save(img_buffer, format="PNG")
     img_buffer.seek(0)
-
-    # 5. Odeslání jako streamovaný obrázek se správným kódováním názvu (RFC 5987)
     from urllib.parse import quote
     base_name = doc.get('name', 'object').replace(' ', '_')
-    # Odstranění potenciálně problematických znaků pro název souboru
     safe_name = "".join([c for c in base_name if c.isalnum() or c in ('_', '-')])
-    filename = f"qr_{safe_name}.png"
-    encoded_filename = quote(filename)
+    encoded_filename = quote(f"qr_{safe_name}.png")
+    return StreamingResponse(img_buffer, media_type="image/png", headers={"Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}"})
 
-    return StreamingResponse(
-        img_buffer, 
-        media_type="image/png",
-        # Použijeme filename* pro UTF-8 podporu
-        headers={
-            "Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}"
-        }
-    )
-# --- BATTERY TYPES (Katalog baterií) ---
+# BATTERY TYPES
 @app.get("/battery-types")
-async def get_battery_types(user: dict = Depends(get_current_user)):
+async def get_battery_types_endpoint(user: dict = Depends(get_current_user)):
     return [fix_mongo_id(d) async for d in db.battery_types.find({})]
 
 @app.post("/battery-types")
-async def create_battery_type(bt: dict = Body(...), user: dict = Depends(get_current_admin)):
+async def create_battery_type_endpoint(bt: dict = Body(...), user: dict = Depends(get_current_admin)):
     if "id" not in bt: bt["id"] = uuid.uuid4().hex
     await db.battery_types.insert_one(bt)
     return fix_mongo_id(bt)
 
 @app.delete("/battery-types/{bt_id}")
-async def delete_battery_type(bt_id: str, user: dict = Depends(get_current_admin)):
+async def delete_battery_type_endpoint(bt_id: str, user: dict = Depends(get_current_admin)):
     await db.battery_types.delete_one({"id": bt_id})
     return {"status": "deleted"}
 
-
-# ==========================================
-# --- USER MANAGEMENT (ADMIN ONLY) ---
-# ==========================================
-
-# 1. Získání všech uživatelů
+# USERS
 @app.get("/users")
-async def get_all_users(user: dict = Depends(get_current_admin)):
+async def get_all_users_endpoint(user: dict = Depends(get_current_admin)):
     users = []
     async for doc in db.users.find({}):
-        # Odstraníme hash hesla z výstupu pro bezpečnost
         doc.pop("hashed_password", None)
         users.append(fix_mongo_id(doc))
     return users
 
-# 2. Vytvoření uživatele (Adminem)
 @app.post("/users")
-async def create_user_admin(req: dict = Body(...), user: dict = Depends(get_current_admin)):
-    # Validace emailu
-    if await db.users.find_one({"email": req.get("email")}):
-        raise HTTPException(400, "User with this email already exists")
-
-    # Heslo - pokud není zadáno, vygenerujeme náhodné (nebo defaultní)
+async def create_user_admin_endpoint(req: dict = Body(...), user: dict = Depends(get_current_admin)):
+    if await db.users.find_one({"email": req.get("email")}): raise HTTPException(400, "Exists")
     raw_password = req.get("password") or "batteryguard123"
-    
     new_user = {
-        "id": uuid.uuid4().hex,
-        "name": req.get("name", "Neznámý"),
-        "email": req.get("email"),
-        "role": req.get("role", "TECHNICIAN"), # 'ADMIN' nebo 'TECHNICIAN'
-        "isAuthorized": True, # Adminem vytvořený uživatel je rovnou autorizovaný
-        "hashed_password": get_password_hash(raw_password),
-        "createdAt": datetime.utcnow().isoformat()
+        "id": uuid.uuid4().hex, "name": req.get("name", "Neznámý"), "email": req.get("email"),
+        "role": req.get("role", "TECHNICIAN"), "isAuthorized": True,
+        "hashed_password": get_password_hash(raw_password), "createdAt": datetime.utcnow().isoformat()
     }
-    
     await db.users.insert_one(new_user)
-    
-    # Vrátíme vytvořeného uživatele bez hesla
     new_user.pop("hashed_password", None)
     return fix_mongo_id(new_user)
 
-# 3. Změna hesla jiného uživatele (Adminem)
 @app.patch("/users/{user_id}/password")
 async def admin_change_user_password(user_id: str, body: dict = Body(...), user: dict = Depends(get_current_admin)):
     new_password = body.get("newPassword")
-    if not new_password:
-        raise HTTPException(400, "New password is required")
-
-    result = await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"hashed_password": get_password_hash(new_password)}}
-    )
-    
-    if result.matched_count == 0:
-        raise HTTPException(404, "User not found")
-        
+    if not new_password: raise HTTPException(400, "Required")
+    result = await db.users.update_one({"id": user_id}, {"$set": {"hashed_password": get_password_hash(new_password)}})
+    if result.matched_count == 0: raise HTTPException(404, "Not found")
     return {"status": "password_updated"}
 
-# ==========================================
-# --- USER PROFILE (SELF) ---
-# ==========================================
-
-# 4. Změna vlastního hesla
 @app.patch("/auth/password")
 async def change_self_password(body: dict = Body(...), user: dict = Depends(get_current_user)):
-    current_password = body.get("currentPassword")
-    new_password = body.get("newPassword")
-    
-    if not current_password or not new_password:
-        raise HTTPException(400, "Current and new passwords are required")
-
-    # 1. Ověření starého hesla
-    # Poznámka: 'user' z dependency neobsahuje hash (pokud ho get_current_user filtruje), 
-    # nebo ho obsahuje. V původním kódu get_current_user vrací user objekt z DB.
-    # Musíme si vytáhnout aktuální hash z DB pro jistotu, nebo z objektu user.
-    
-    # Pro jistotu načteme full user objekt i s heslem
+    current_password, new_password = body.get("currentPassword"), body.get("newPassword")
     full_user = await db.users.find_one({"email": user["email"]})
-    if not verify_password(current_password, full_user["hashed_password"]):
-        raise HTTPException(400, "Invalid current password")
-
-    # 2. Uložení nového hesla
-    await db.users.update_one(
-        {"email": user["email"]},
-        {"$set": {"hashed_password": get_password_hash(new_password)}}
-    )
-    
+    if not verify_password(current_password, full_user["hashed_password"]): raise HTTPException(400, "Invalid password")
+    await db.users.update_one({"email": user["email"]}, {"$set": {"hashed_password": get_password_hash(new_password)}})
     return {"status": "password_changed"}
 
-
-# --- STARTUP ---
 @app.on_event("startup")
 async def startup_db_client():
     if not await db.users.find_one({}):
@@ -645,9 +777,7 @@ async def startup_db_client():
             "id": "admin", "name": "Admin", "email": ADMIN_EMAIL, "role": "ADMIN", 
             "isAuthorized": True, "hashed_password": get_password_hash(ADMIN_PASSWORD)
         })
-    # Seed templates if empty
     if not await db.templates.find_one({}):
         await db.templates.insert_many([
              {"id": "t-service", "name": "Servisní zásah", "icon": "Wrench", "fields": [{"id": "f1", "label": "Popis", "type": "textarea", "required": True}]},
-             {"id": "t-revision", "name": "Revize", "icon": "ClipboardCheck", "fields": [{"id": "f7", "label": "Příští termín", "type": "date", "required": True}]}
         ])

@@ -38,7 +38,7 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, objects }) =>
 
   // --- HANDLERS ---
 
-  const handleAddGroup = (e: React.FormEvent) => {
+ const handleAddGroup = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name?.trim()) return;
 
@@ -46,7 +46,10 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, objects }) =>
       name: formData.name,
       color: formData.color,
       defaultBatteryLifeMonths: Number(formData.defaultBatteryLifeMonths) || 24,
-      notificationLeadTimeWeeks: Number(formData.notificationLeadTimeWeeks) || 4
+      notificationLeadTimeWeeks: Number(formData.notificationLeadTimeWeeks) || 4,
+      // --- PŘIDAT TENTO ŘÁDEK ---
+      billingInfo: formData.billingInfo 
+      // --------------------------
     }, {
       onSuccess: () => {
         setAddModalOpen(false);
@@ -73,7 +76,7 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, objects }) =>
     setDeletingGroupId(null);
   };
 
-  const handleUpdateGroup = (id: string) => {
+const handleUpdateGroup = (id: string) => {
     if (!formData.name?.trim()) return;
 
     updateGroupMutation.mutate({
@@ -82,7 +85,10 @@ const GroupManagement: React.FC<GroupManagementProps> = ({ groups, objects }) =>
         name: formData.name!,
         color: formData.color,
         defaultBatteryLifeMonths: Number(formData.defaultBatteryLifeMonths),
-        notificationLeadTimeWeeks: Number(formData.notificationLeadTimeWeeks)
+        notificationLeadTimeWeeks: Number(formData.notificationLeadTimeWeeks),
+        // --- PŘIDAT TENTO ŘÁDEK ---
+        billingInfo: formData.billingInfo
+        // --------------------------
       }
     }, {
       onSuccess: () => {
